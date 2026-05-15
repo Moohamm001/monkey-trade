@@ -1,0 +1,11 @@
+To start the app
+
+Terminal 1 — Backend:
+start_backend.bat
+or: pip install -r backend/requirements.txt → python -m uvicorn backend.main:app --reload
+
+Terminal 2 — Frontend:
+start_frontend.bat
+or: cd frontend → npm install → npm run dev
+
+Then open http://localhost:5173
