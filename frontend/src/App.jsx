@@ -1,17 +1,19 @@
 import React from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { BarChart2, Search, BookOpen, Newspaper, Star, LayoutDashboard } from 'lucide-react'
+import { BarChart2, Search, BookOpen, Newspaper, Star, LayoutDashboard, Activity } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
 import CycleDetector from './pages/CycleDetector'
 import Screener from './pages/Screener'
 import Watchlist from './pages/Watchlist'
 import Education from './pages/Education'
 import News from './pages/News'
+import OrderFlow from './pages/OrderFlow'
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/cycle', icon: Search, label: 'Cycle Detector' },
   { to: '/screener', icon: BarChart2, label: 'Screener' },
+  { to: '/orderflow', icon: Activity, label: 'Order Flow' },
   { to: '/watchlist', icon: Star, label: 'Watchlist' },
   { to: '/news', icon: Newspaper, label: 'Market News' },
   { to: '/education', icon: BookOpen, label: 'Strategy Guide' },
@@ -68,6 +70,7 @@ export default function App() {
           <Route path="/screener" element={<Screener />} />
           <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/news" element={<News />} />
+          <Route path="/orderflow" element={<OrderFlow />} />
           <Route path="/education" element={<Education />} />
         </Routes>
       </main>
