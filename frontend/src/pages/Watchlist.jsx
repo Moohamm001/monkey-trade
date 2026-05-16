@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Plus, Trash2, AlertCircle, RefreshCw } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import StageBadge from '../components/StageBadge'
+import HelpBanner from '../components/HelpBanner'
 
 const pct = n => n != null ? `${(n*100).toFixed(1)}%` : '—'
 
@@ -53,6 +54,22 @@ export default function Watchlist() {
 
   return (
     <div className="p-3 space-y-3">
+      <HelpBanner
+        pageKey="watchlist"
+        title="Watchlist — Your Saved Tickers"
+        whatIsThis="A personal list of tickers you're monitoring with optional entry / stop / target prices. The live stage badge updates so you know when each setup matures."
+        steps={[
+          "Click <b>+ Add</b>, enter a ticker plus your planned entry / stop / target prices.",
+          "The <b>R:R</b> column shows your risk-reward — only add trades where R:R ≥ 2.",
+          "Check back daily — the <b>stage badge</b> updates as the cycle progresses.",
+        ]}
+        tips={[
+          "Add a <b>note</b> explaining your thesis — future you needs to remember <i>why</i>.",
+          "Don't keep tickers that have invalidated the setup — <b>delete and move on</b>.",
+          "Use the Screener to find candidates, then promote the best to your Watchlist.",
+        ]}
+      />
+
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold text-ink">Watchlist</span>
         <span className="text-xs text-muted">entry · stop · target · live stage</span>

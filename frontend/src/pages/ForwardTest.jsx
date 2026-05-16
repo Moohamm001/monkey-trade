@@ -596,6 +596,22 @@ export default function ForwardTest() {
   return (
     <div className="p-3 space-y-3 max-w-4xl">
 
+      <HelpBanner
+        pageKey="forwardtest"
+        title="Forward Test — Manual Paper Trades"
+        whatIsThis="A learning journal where YOU place paper trades. The system tracks outcomes vs. the original signal so you learn which setups actually work for you."
+        steps={[
+          "Click <b>+ New Trade</b>, enter ticker + entry / stop / target + reasoning.",
+          "When the trade hits stop or target (or you decide to close), click <b>Close</b> and log the lesson learned.",
+          "Review the <b>summary stats</b> over time — win rate, avg R, best/worst setups.",
+        ]}
+        tips={[
+          "Use this <b>before</b> the autonomous bot — develop your own intuition on which signals work.",
+          "Always write a <b>one-line lesson</b> on every closed trade — this is where real edge compounds.",
+          "Aim for <b>R ≥ 1.5</b> on average over 20+ trades before scaling size or going live.",
+        ]}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

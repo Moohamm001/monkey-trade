@@ -5,6 +5,7 @@ import { NavLink } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import StageBadge from '../components/StageBadge'
 import CandlestickChart from '../components/CandlestickChart'
+import HelpBanner from '../components/HelpBanner'
 
 const QUICK = ['SPY', 'QQQ', 'NVDA', 'AAPL', 'TSLA', 'MSFT', 'AMZN', 'BTC-USD']
 
@@ -296,6 +297,23 @@ export default function Dashboard() {
 
   return (
     <div className="p-3 space-y-3">
+
+      <HelpBanner
+        pageKey="dashboard"
+        title="Stock Analysis Dashboard"
+        whatIsThis="Deep-dive on one stock at a time — Wyckoff stage, key indicators, chart, trade signals, suggested entry/stop/target, institutional flow, and headlines."
+        steps={[
+          "Type a ticker (or click a quick chip like <b>NVDA</b> or <b>SPY</b>) to load it.",
+          "Read the <b>stage banner</b> at the top: 🔵 Accumulation / 🟢 Markup = look to buy; 🟡 Distribution / 🔴 Markdown = avoid or short.",
+          "Use the <b>Trade Levels</b> panel for entry / stop / target. Only act when Risk:Reward is ≥ <b>2.0</b>.",
+          "Check <b>🏦 Institutional Intelligence</b> for insider buys, options flow, short interest before sizing.",
+        ]}
+        tips={[
+          "Whale activity ≥ <b>2× average volume</b> is a strong institutional fingerprint.",
+          "Insider <b>cluster buying</b> (3+ insiders in 30 days) is the highest-conviction insider signal.",
+          "Click any signal pill to expand its full explanation.",
+        ]}
+      />
 
       {/* ── Top bar: search + quick chips ── */}
       <div className="flex items-center gap-2 flex-wrap">

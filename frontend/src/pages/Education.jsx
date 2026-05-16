@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import HelpBanner from './../components/HelpBanner'
 
 const STAGES = [
   {
@@ -89,6 +90,22 @@ export default function Education() {
 
   return (
     <div className="p-3 space-y-3 max-w-4xl">
+      <HelpBanner
+        pageKey="education"
+        title="Strategy Guide — Wyckoff Market Cycle"
+        whatIsThis="The foundation of how this app thinks: every stock cycles through 4 stages — Accumulation → Markup → Distribution → Markdown. Knowing the stage tells you what to do."
+        steps={[
+          "Tap a <b>stage chip</b> at the top (Accumulation / Markup / Distribution / Markdown).",
+          "Read what the stage <b>looks like</b>, who <b>wins</b> in it, and what the <b>trap</b> is.",
+          "Apply this lens on every chart you analyze in <b>Dashboard</b> or <b>Cycle Detector</b>.",
+        ]}
+        tips={[
+          "The biggest money is made entering at the <b>end of Accumulation</b> / start of Markup.",
+          "The biggest losses come from <b>buying late in Markup</b> when the stage is rolling into Distribution.",
+          "<b>Markdown</b> = either short or stay flat. Catching falling knives is how accounts die.",
+        ]}
+      />
+
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold text-ink">Strategy Guide</span>
         <span className="text-xs text-muted">Wyckoff Market Cycle · Profit analysis</span>

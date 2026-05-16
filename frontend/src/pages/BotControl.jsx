@@ -6,6 +6,7 @@ import {
   FileText, Globe, Layers
 } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
+import HelpBanner from '../components/HelpBanner'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const pct  = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v}%`
@@ -287,6 +288,22 @@ export default function BotControl() {
 
   return (
     <div className="p-3 space-y-3 max-w-4xl">
+
+      <HelpBanner
+        pageKey="bot"
+        title="Autonomous Trading Bot"
+        whatIsThis="A self-learning scanner that picks paper trades from your universe, executes them in the virtual portfolio, and adjusts its confidence based on outcomes."
+        steps={[
+          "Click <b>Run Scan</b> once to test it — see which tickers it would pick and why.",
+          "Click <b>Start Bot</b> to let it scan continuously and place paper trades automatically.",
+          "Watch the <b>Win Rate by Stage</b> bars — that's the bot learning which Wyckoff stages it's good at.",
+        ]}
+        tips={[
+          "Let the bot accumulate <b>at least 50 closed trades</b> before trusting its win-rate stats.",
+          "Smart Money Score chips show how well each pick aligns with insider/13D/dark pool flow.",
+          "All trades are <b>paper</b> — they hit the virtual $10k portfolio, never real money.",
+        ]}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">

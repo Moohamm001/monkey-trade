@@ -9,6 +9,7 @@ import {
   BarChart, Bar,
 } from 'recharts'
 import { useApi } from '../hooks/useApi'
+import HelpBanner from '../components/HelpBanner'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const fmtNum = v => {
@@ -506,6 +507,22 @@ export default function WhaleTracker() {
 
   return (
     <div className="p-3 space-y-3 max-w-6xl">
+
+      <HelpBanner
+        pageKey="whale"
+        title="Whale Tracker — Follow the Smart Money"
+        whatIsThis="Aggregates 6 institutional signals — SEC Form 4 insider trades, 13D/G activist filings, FINRA dark pool prints, options flow, COT reports, and congressional trades — into one Smart Money Score (0-100) per stock."
+        steps={[
+          "Type a ticker (e.g. <b>NVDA</b>) and load — wait ~5 seconds for the 6-source pull.",
+          "Read the <b>Smart Money Score</b>: 80+ = EXT BULL (follow the buyers), 30- = EXT BEAR (warning).",
+          "Drill into each panel: <b>Insider cluster buying</b> + <b>13D activist entry</b> are the strongest signals.",
+        ]}
+        tips={[
+          "Insider <b>cluster buying</b> (≥3 insiders in 30 days) cannot be explained by personal reasons — it's a thesis.",
+          "<b>13D filings</b> precede strategic action (buyback, spin-off, sale) within 60-90 days historically.",
+          "Politician trades (Pelosi / Tuberville etc.) generate <b>reflexive retail momentum</b> — read also: News → Smart Money tab.",
+        ]}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">

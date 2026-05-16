@@ -4,6 +4,7 @@ import { useApi } from '../hooks/useApi'
 import StageBadge from '../components/StageBadge'
 import StageScoreBar from '../components/StageScoreBar'
 import CandlestickChart from '../components/CandlestickChart'
+import HelpBanner from '../components/HelpBanner'
 
 const PERIODS = ['6mo', '1y', '2y', '5y']
 
@@ -118,6 +119,23 @@ export default function CycleDetector() {
 
   return (
     <div className="p-3 space-y-3 max-w-5xl">
+      <HelpBanner
+        pageKey="cycle"
+        title="Wyckoff Cycle Detector"
+        whatIsThis="Tells you which of the 4 Wyckoff phases a stock is currently in — Accumulation, Markup, Distribution, or Markdown — and gives you exact entry / stop / target levels."
+        steps={[
+          "Type a ticker (e.g. <b>NVDA</b>, <b>TSLA</b>) and pick a lookback period.",
+          "Click <b>Analyze</b> — wait ~3-5 seconds.",
+          "Read the <b>stage banner</b> + <b>stage probability bar</b>. Higher probability = stronger conviction.",
+          "Tap any signal card to read <i>what it measures</i> and <i>what it means</i> for the trade.",
+        ]}
+        tips={[
+          "<b>Accumulation → Markup transition</b> is the highest-reward entry (lowest risk, biggest upside).",
+          "If the <b>R:R is below 1.5</b>, skip the trade — the math doesn't work even if you're right.",
+          "Use <b>1y</b> for swing trades, <b>2y / 5y</b> to confirm long-term cycle stage.",
+        ]}
+      />
+
       <form onSubmit={analyze} className="flex flex-wrap gap-2 items-center">
         <span className="text-sm font-bold text-ink flex-shrink-0">Cycle Detector</span>
         <input

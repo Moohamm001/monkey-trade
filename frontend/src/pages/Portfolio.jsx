@@ -155,6 +155,22 @@ export default function Portfolio() {
   return (
     <div className="p-3 space-y-3">
 
+      <HelpBanner
+        pageKey="portfolio"
+        title="Virtual Portfolio — $10k Paper Account"
+        whatIsThis="A self-managing $10,000 virtual account. The bot allocates capital using quarter-Kelly sizing (capped 20%/trade), opens & closes positions automatically, and tracks the equity curve."
+        steps={[
+          "View the <b>equity curve</b> on the Overview tab — see the running P&L.",
+          "Open <b>Positions</b> tab to see what the bot currently holds with unrealized P&L.",
+          "Open <b>History</b> tab to review closed trades, win/loss, and learning outcomes.",
+        ]}
+        tips={[
+          "Each trade is <b>capped at 20% of equity</b> via quarter-Kelly — preserves the account through losing streaks.",
+          "All trades are <b>paper</b> — no real money. Use it to test strategy before going live.",
+          "The bot logs <i>why</i> it opened each trade — read those reasons to learn its decision process.",
+        ]}
+      />
+
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold text-ink flex items-center gap-1.5">

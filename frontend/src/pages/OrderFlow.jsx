@@ -8,6 +8,7 @@ import {
   Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
 import { useApi } from '../hooks/useApi'
+import HelpBanner from '../components/HelpBanner'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const fmt = v => v == null ? '—' : typeof v === 'number' ? v.toLocaleString() : v
@@ -662,6 +663,22 @@ export default function OrderFlow() {
 
   return (
     <div className="p-3 space-y-3 max-w-6xl">
+      <HelpBanner
+        pageKey="orderflow"
+        title="Order Flow Intelligence"
+        whatIsThis="Reads the micro-structure of the tape — buying vs selling pressure, market regime (Trending / Mean-Reverting / High Vol), and whether flow looks Institutional vs Retail."
+        steps={[
+          "Type a ticker in the <b>Market Regime</b> panel and load — it tells you which regime the stock is in right now.",
+          "Match your strategy to the regime: <b>Trending → breakouts</b>, <b>Mean-Reverting → fade extremes</b>, <b>High Vol → reduce size or stay flat</b>.",
+          "Use the <b>Institutional Flow</b> panel to confirm whether large players are accumulating — go long with them, not against.",
+        ]}
+        tips={[
+          "Same news behaves <b>differently</b> in different regimes — always check regime first.",
+          "Order imbalances ≥ <b>3:1 (buy:sell)</b> at the Point of Control are high-conviction entries.",
+          "If volatility regime flips, <b>tighten stops or exit</b> — breakouts fail far more often in High-Vol.",
+        ]}
+      />
+
       <div className="flex items-center gap-3">
         <Activity size={18} className="text-primary" />
         <div>

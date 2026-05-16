@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { Filter, Play, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import StageBadge from '../components/StageBadge'
+import HelpBanner from '../components/HelpBanner'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const fmt = (n, prefix = '') => {
@@ -111,6 +112,23 @@ export default function Screener() {
 
   return (
     <div className="p-3 space-y-3">
+      <HelpBanner
+        pageKey="screener"
+        title="Stock Screener"
+        whatIsThis="Scan a universe of stocks (Top 100 or full S&P 500) and filter by fundamentals + Wyckoff stage to find candidates you'd actually trade."
+        steps={[
+          "Pick a <b>universe</b>: ⚡ Top 100 is fast (~30s); 📊 S&P 500 is thorough (~5–10 min).",
+          "Set <b>fundamental filters</b> (Rev Growth, P/E, Margin) — leave blank to skip a filter.",
+          "Toggle <b>stage chips</b> (🔵 Accumulation, 🟢 Markup, etc.) to keep only the stages you want.",
+          "Click <b>Run Screener</b>, then click any column header to sort results.",
+        ]}
+        tips={[
+          "For buying ideas, combine: <b>Accumulation + Markup</b> stages, Rev Growth ≥ 10%, P/E ≤ 40.",
+          "For shorting ideas, look at <b>Distribution + Markdown</b> with declining Earn Growth.",
+          "The <b>Cycle</b> column shows stage confidence — prefer stocks with ≥ 70% confidence.",
+        ]}
+      />
+
       {/* ── Filter panel ── */}
       <div className="card space-y-2.5">
         <div className="flex items-center justify-between gap-3 flex-wrap">

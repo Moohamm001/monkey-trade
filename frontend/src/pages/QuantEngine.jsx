@@ -8,6 +8,7 @@ import {
   Brain, TrendingUp, Activity, FlaskConical, Sigma,
   ChevronDown, ChevronUp, AlertCircle, Target, Loader,
 } from 'lucide-react'
+import HelpBanner from '../components/HelpBanner'
 
 const QAPI  = 'http://localhost:8000/api/quant'
 const SAPI  = 'http://localhost:8000/api/stock'
@@ -815,6 +816,22 @@ export default function QuantEngine() {
 
   return (
     <div className="p-3 space-y-3">
+      <HelpBanner
+        pageKey="quant"
+        title="Quant Engine — Jim Simons Stack"
+        whatIsThis="Runs four classical quant models on one stock: Hidden Markov regime detection, Ornstein-Uhlenbeck mean reversion, Kalman filter trend, Information Coefficient signal quality, and Kelly position sizing."
+        steps={[
+          "Type a ticker (e.g. <b>SPY</b>) and load.",
+          "Read the <b>HMM regime</b> — tells you the latent market state probability.",
+          "Use the <b>Kelly fraction</b> as a sanity check on position size — never exceed <b>quarter-Kelly (25% of Kelly)</b>.",
+        ]}
+        tips={[
+          "If <b>IC p-value > 0.05</b>, the signal is statistically noise — don't trade it.",
+          "Quarter-Kelly is capped at <b>20%/trade</b> here on purpose — full Kelly is for theory, not real accounts.",
+          "Use this page for <b>position sizing</b> after Dashboard / Cycle Detector tell you <i>what</i> to trade.",
+        ]}
+      />
+
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold text-ink">Quant Engine</span>
