@@ -26,6 +26,15 @@ A full-stack stock and crypto analysis web app built on **Wyckoff Market Cycle T
 - **Risk Manager & Kill Switch** — volatility-adjusted position sizing with a portfolio-level daily drawdown halt
 - **Trigger Engine** — executes only when price, volume delta, and SVM signal all align simultaneously
 
+### Whale Tracker — Institutional Intelligence (6 live data sources)
+- **Smart Money Score** — composite 0–100 score aggregated from all six sources, weighted by signal conviction
+- **SEC Form 4 (Insider Transactions)** — real-time cluster buy/sell detection from EDGAR API, zero lag from filing to signal
+- **SEC 13D/G (Activist Filings)** — detects new >5% institutional holders and activist campaigns before price reacts
+- **FINRA Dark Pool Metrics** — daily off-exchange short volume as an institutional accumulation proxy, with spike detection
+- **CFTC COT Report** — futures positioning by Asset Managers vs Leveraged Funds; divergence = pre-squeeze setup
+- **Congressional STOCK Act Disclosures** — House + Senate trade filings; cluster buying by 3+ members = policy-informed signal
+- **Enhanced Options Flow** — unusual activity sweeps, IV skew (25-delta), deep ITM call detection, dollar-weighted premium flow, expected move from ATM straddle
+
 ---
 
 ## Tech Stack
@@ -43,6 +52,7 @@ A full-stack stock and crypto analysis web app built on **Wyckoff Market Cycle T
 | **aiosqlite** | Async SQLite writes for tick data batching — avoids blocking the FastAPI event loop while flushing high-throughput trade records |
 | **feedparser** | RSS parsing for news aggregation from multiple financial sources |
 | **uvicorn** | ASGI server for FastAPI; runs background pipeline tasks alongside HTTP request handling |
+| **requests** | Synchronous HTTP client for all government API calls (SEC EDGAR, FINRA, CFTC, Congress S3 buckets) — these endpoints do not require async and the simpler sync interface is appropriate |
 
 ### Frontend
 
@@ -287,6 +297,106 @@ All three together = multi-confirmation institutional entry where the risk is ph
 
 ---
 
+## Whale Tracker — Institutional Intelligence
+
+### Why Track Institutional Flow?
+
+Retail traders react to price. Institutions move price. By the time a move is visible on a chart, the smart money has already built its position. Every data source in this system is designed to detect *positioning before price*, not confirmation after.
+
+The six data sources were selected because they are:
+1. **Legally mandated disclosures** — institutions cannot avoid filing (SEC Form 4 within 2 days of trade; 13D/G within 10 days of crossing 5%; STOCK Act within 45 days)
+2. **Free and public** — no paid API key required for any source
+3. **Independent signals** — each captures a different footprint of the same institutional activity
+
+---
+
+### Data Sources
+
+| Source | URL / API | Update Lag | What It Reveals |
+|--------|-----------|-----------|-----------------|
+| **SEC Form 4** | `efts.sec.gov` + `yfinance` | ≤2 business days after trade | Corporate insiders (executives, directors, 10%+ owners) buying or selling their own stock. They cannot legally trade on undisclosed material information — but they can buy ahead of organic catalysts they observe. A cluster (≥3 insiders buying in 30 days) is the highest-conviction signal available. |
+| **SEC 13D/G** | `efts.sec.gov` EDGAR full-text search | ≤10 days after crossing 5% | Any entity acquiring >5% of a public company must file. Schedule 13D = activist intent (they want to change something). Schedule 13G = passive large holder. A new 13D is an activist campaign catalyst before the press release exists. |
+| **FINRA Short Volume** | `cdn.finra.org/equity/regsho/daily/` | Next business day | FINRA's Regulation SHO short volume data (pipe-delimited daily files). Short volume includes all off-exchange / dark pool transactions. `dark_pct = ShortVolume / TotalVolume` is the institutional accumulation proxy: when institutions buy large through dark pools, it registers as elevated "short" volume (technical designation) while not being public retail flow. Spike = >1.5× 10-day average AND >40% total. |
+| **CFTC COT Report** | `publicreporting.cftc.gov` (Socrata API) | Every Friday for prior week | Commitment of Traders: how futures market participants are net positioned. **Asset Managers** = real money (pension funds, mutual funds) — they are the smart money. **Leveraged Funds** = hedge funds — they are directional traders. Divergence (Asset Mgr net long, Lev Funds net short) is a classic pre-squeeze setup. Applies to index futures (SP500, NASDAQ), commodities (gold, oil), and volatility (VIX). |
+| **Congress STOCK Act** | House S3 bucket + Senate S3 bucket | ≤45 days after trade | Members of Congress must disclose stock trades within 45 days. Academic research (Ziobrowski et al., 2004; 2011) found senators outperform the market by 12% annually — above random. A cluster of 3+ members buying the same ticker within 90 days signals policy-informed positioning. Source is public JSON on AWS S3 — no API key required. |
+| **Options Flow (yfinance)** | Yahoo Finance options chains | Real-time (20-min delayed) | Multi-expiry scan across 8 nearest expirations. Four sub-signals: (1) dollar-weighted premium flow (call vs put dollars); (2) unusual activity sweeps (vol/OI ≥ 2.0 + premium ≥ $50K); (3) IV skew — 25-delta put IV minus call IV (negative = fear; positive = call bid); (4) deep ITM calls (strike ≤ 0.85× spot + volume ≥ 500) — institutions disguise large equity purchases as deep-in-the-money calls to avoid showing in 13F until next quarter. |
+
+---
+
+### Smart Money Score Model
+
+**Base score: 50 (neutral). All sources add or subtract. Final score clamped to [0, 100].**
+
+| Source | Max Bullish | Max Bearish | Trigger |
+|--------|------------|------------|---------|
+| SEC Form 4 — Cluster Buy | +20 | — | ≥3 executives buying in 30 days |
+| SEC Form 4 — Solo Buy | +10 | — | 1–2 insiders buying |
+| SEC Form 4 — Cluster Sell | — | −15 | ≥3 executives selling in 30 days |
+| SEC Form 4 — Isolated Sell | — | −5 | 1–2 insiders selling (low weight — often diversification) |
+| SEC 13D — Activist Filing | +20 | — | New 13D from known activist or intent language |
+| SEC 13G — Passive Large Holder | +5 | — | New >5% passive institutional holder |
+| FINRA Dark Pool — Spike | +15 | — | Volume >1.5× avg AND dark_pct >40% |
+| FINRA Dark Pool — Elevated | +10 | — | Bullish trend signal without spike threshold |
+| FINRA Dark Pool — Bearish | — | −12 | Declining dark pool participation (distribution) |
+| Options Premium Flow — Bullish | +12 | — | Call premium >65% of total call+put dollars |
+| Options Premium Flow — Bearish | — | −12 | Put premium >65% of total dollars |
+| IV Skew — Bearish | — | −10 | 25-delta put IV substantially above call IV |
+| IV Skew — Bullish | +8 | — | 25-delta call IV above put IV |
+| Unusual Options — Bullish | +10 | — | ≥3 sweeps: calls with vol/OI ≥ 2.0 + premium ≥ $50K |
+| Unusual Options — Bearish | — | −10 | ≥3 sweeps: puts meeting same threshold |
+| Congress — Cluster Buy | +15 | — | ≥3 members buying same ticker within 90 days |
+| Congress — Solo Buy | +7 | — | 1–2 members buying |
+| Congress — Bearish | — | −8 | Net selling by members |
+| COT — Asset Mgr Bullish | +12 | — | Asset Manager net long and increasing WoW |
+| COT — Bearish | — | −12 | Asset Manager net short or Leveraged Funds heavily short |
+| Short Interest — Squeeze Setup | +8 | — | Float shorted >5% AND short interest falling >10% MoM |
+| Short Interest — Bearish | — | −8 | Float shorted >20% AND increasing |
+
+**Score Interpretation:**
+
+| Score | Rating | Meaning |
+|-------|--------|---------|
+| 80–100 | EXTREME BULLISH | Multiple institutional signals converging. Rare. Historically precedes significant upside. |
+| 65–79 | BULLISH | Smart money is positioning long. Risk/reward skewed upside. |
+| 45–64 | NEUTRAL | Mixed or absent signals. No directional edge from institutional data. |
+| 30–44 | BEARISH | Institutional indicators suggest selling pressure or distribution. |
+| 0–29 | EXTREME BEARISH | Multiple signals warn of institutional exit or active shorting. High-risk long environment. |
+
+---
+
+### Why Each Signal Was Weighted This Way
+
+**Insider cluster buy (+20, highest weight):** Executives have legal access to internal financials, pipeline, and strategic plans. They take personal legal risk to buy — and they can only buy for one reason. A single insider buy might be routine. Three buying simultaneously is coordination. No other public signal has higher insider knowledge content.
+
+**Activist 13D (+20, tied highest):** A 13D filing means someone bought >5% and filed with confrontational intent. This is a public commitment to drive price — they have skin in the game and a legal obligation to follow through. The market typically re-rates the stock 5–15% within 30 days of a 13D becoming public.
+
+**Dark pool (+15 spike):** Institutions cannot execute large orders on-exchange without moving the price against themselves. Dark pools exist specifically to hide block-size order flow from the market. Elevated dark pool volume on an up-trending stock = stealth accumulation that hasn't appeared in price yet.
+
+**Options premium flow (+12 / −12):** The total dollar commitment reveals conviction level. Retail trades 1 contract. Institutions spend millions in premium. A 70/30 call/put dollar split means someone is paying serious money to be long. Dollar flow outweighs contract count.
+
+**COT (+12 / −12):** Asset Managers represent the largest pools of capital on earth. When pension funds and sovereign wealth funds shift their futures positioning, price follows — it has to. The weekly COT report is one of the most reliable leading indicators in professional macro trading.
+
+**Congressional trades (+10 / −8):** The academic evidence (Ziobrowski 2004, 2011) is unambiguous: members of Congress consistently outperform random stock selection. The STOCK Act disclosure requirement is the only window into this flow. Cluster buying by multiple members on the same stock in the same 90-day window is the strongest signal — diversification doesn't explain it.
+
+**Short interest / squeeze setup (+8):** High short interest alone is not bullish — it can mean the stock deserves to be shorted. But a rapid decline in short interest (>10% cover in one month) while the float is still meaningfully shorted suggests shorts are being squeezed or capitulating. This creates upside pressure as covering shorts are forced to buy.
+
+---
+
+### How the Frontend Renders It
+
+The **WhaleTracker** page (`/whale`) loads in three async stages:
+1. **Score card** (fast) — hits `/api/whale/{ticker}/score` first, shows the composite score while other panels load
+2. **Parallel data panels** — insider, options-flow, and congress data fetch simultaneously via `Promise.all`
+3. **Independent panels** — dark pool loads in its own `useEffect` (independent component lifecycle)
+
+**Signal Feed** — all signals sorted descending by |delta|, highest conviction first. Each signal is an expandable accordion showing source, direction badge, score contribution, and full interpretation text.
+
+**COT Panel** — bar chart of Asset Manager net positioning by week (green bars = net long, red = net short) with interpretation of the current positioning vs leveraged fund divergence.
+
+**Options Panel** — premium flow bar showing call vs put dollar split, expected move from ATM straddle, IV skew with percentage, unusual activity table, and deep ITM call warning when applicable.
+
+---
+
 ## Project Structure
 
 ```
@@ -299,10 +409,11 @@ monkey-trade3/
 │   │   ├── screener.py              # /api/screener/run, /universes
 │   │   ├── watchlist.py             # /api/watchlist CRUD
 │   │   ├── news.py                  # /api/news
-│   │   └── orderflow.py             # /api/orderflow/* (Phase 1–3)
+│   │   ├── orderflow.py             # /api/orderflow/* (Phase 1–3)
+│   │   └── whale.py                 # /api/whale/* (institutional intelligence)
 │   └── services/
 │       ├── cycle_detector.py        # Wyckoff scoring engine + 8 signals
-│       ├── institutional.py         # Options, short interest, 13F, insiders
+│       ├── institutional.py         # Options, short interest, 13F, insiders (EOD)
 │       ├── stock_data.py            # yfinance wrappers for price + fundamentals
 │       ├── screener.py              # S&P 500 / Top 100 scanning
 │       ├── news.py                  # RSS aggregation + relevance scoring
@@ -311,7 +422,13 @@ monkey-trade3/
 │       ├── regime_detector.py       # K-Means market regime classification
 │       ├── flow_classifier.py       # SVM institutional flow detection
 │       ├── risk_manager.py          # Position sizing + kill switch
-│       └── trigger_engine.py        # Three-condition execution gate
+│       ├── trigger_engine.py        # Three-condition execution gate
+│       ├── sec_edgar.py             # SEC Form 4 insider transactions + 13D/G activist filings
+│       ├── dark_pool.py             # FINRA daily short volume → dark pool metrics
+│       ├── cot_report.py            # CFTC COT futures positioning (Socrata API)
+│       ├── congress_trades.py       # House + Senate STOCK Act trade disclosures
+│       ├── options_flow.py          # Enhanced multi-expiry options flow analysis
+│       └── smart_money.py           # Smart Money Score aggregator (all 6 sources → 0-100)
 └── frontend/
     ├── src/
     │   ├── App.jsx                  # Layout, sidebar nav
@@ -319,6 +436,7 @@ monkey-trade3/
     │   │   ├── Dashboard.jsx        # Main analysis view
     │   │   ├── Screener.jsx         # Stock scanner
     │   │   ├── OrderFlow.jsx        # Phase 1–3 order flow page
+    │   │   ├── WhaleTracker.jsx     # Institutional intelligence — 7-panel whale view
     │   │   ├── Watchlist.jsx        # Saved tickers + R:R calculator
     │   │   ├── Education.jsx        # Wyckoff theory guide
     │   │   └── News.jsx             # News feed
@@ -402,6 +520,17 @@ The Footprint, VPVR, and SVM features require live tick data:
 | `POST` | `/api/orderflow/risk/reset-daily` | Reset daily drawdown baseline and kill switch |
 | `POST` | `/api/orderflow/trigger/evaluate` | Evaluate all three trigger conditions for a buy signal |
 
+### Whale Tracker — Institutional Intelligence
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/whale/{ticker}` | Full intelligence package — all 6 sources + Smart Money Score |
+| `GET` | `/api/whale/{ticker}/score` | Smart Money Score only (fast, loads first in UI) |
+| `GET` | `/api/whale/{ticker}/insider` | SEC Form 4 insider transactions + 13D/G activist filings |
+| `GET` | `/api/whale/{ticker}/darkpool?days=10` | FINRA dark pool metrics, 3–30 day lookback |
+| `GET` | `/api/whale/{ticker}/options-flow` | Full options analysis: flow, skew, unusual, deep ITM, expected move |
+| `GET` | `/api/whale/{ticker}/congress?days=365` | Congressional trade disclosures, 30–730 day window |
+| `GET` | `/api/whale/cot/{instrument}` | CFTC COT for a futures instrument (SP500, NASDAQ, GOLD, OIL, BONDS, VIX) |
+
 ---
 
 ## Design Decisions
@@ -417,3 +546,19 @@ The Footprint, VPVR, and SVM features require live tick data:
 **Why K-Means for regime and SVM for flow, not a single deep learning model?** Both tasks lack labelled training data. K-Means requires no labels and defines regimes from the data's own structure. The SVM uses auto-labelled data (top-quartile bars by size + conviction) as a bootstrap. A deep learning model would require thousands of hand-labelled examples. For an unsupervised problem, simpler models that explain their decisions are more trustworthy than black-box networks — especially when the cost of a wrong prediction is a real trade.
 
 **Why batch tick writes to SQLite instead of writing every tick?** Binance aggTrade streams can produce 50–200 messages per second for liquid pairs. Writing each tick individually creates hundreds of fsync calls per second — SQLite is not designed for this. Batching 100 ticks and flushing atomically reduces disk I/O by ~100× with no data loss, since ticks are held in memory between flushes.
+
+**Why use FINRA short volume as a dark pool proxy rather than a paid dark pool feed?** True dark pool data (lit vs. off-exchange disaggregated by venue) requires expensive institutional feeds. FINRA ATS short volume is the best free proxy: FINRA's Regulation SHO requires all FINRA-member firms to report their off-exchange volume as short volume. This captures the same institutional block-order flow that dark pools are designed to hide from the open market. It's not identical, but the correlation with real dark pool accumulation is strong enough for a directional signal.
+
+**Why does the dark pool signal use a spike threshold (1.5× avg AND >40%) rather than a raw level?** A stock with consistently high dark pool participation (e.g., a large-cap with 45% average off-exchange volume) provides no new information when it shows 46%. The spike threshold detects *change from baseline* — a sudden increase in institutional participation that wasn't there before is the signal, not the absolute level.
+
+**Why track Congressional trades if the disclosure lag is up to 45 days?** The Ziobrowski academic studies (Senate 2004, House 2011) found members outperformed by 12% and 6% annually respectively. The edge persists even *after* public disclosure because the market underreacts to this information — individual member trades are buried in STOCK Act filings that nobody aggregates. Our cluster-buy detection (≥3 members, same ticker, 90-day window) surfaces the coordinated signal that the market has not yet fully priced in.
+
+**Why does the Smart Money Score apply asymmetric weights (buys score higher than sells)?** Isolated insider selling is genuinely noisy — executives sell for taxes, liquidity needs, estate planning, and diversification. There are many reasons to sell that have nothing to do with bearish conviction. But executives only buy for one reason: they believe the stock will go up. This asymmetry matches the empirical literature on insider trading signal quality. Cluster sells (3+ execs) get a meaningful penalty because coordinated selling is harder to explain away.
+
+**Why scan 8 options expiries instead of just the nearest one?** Retail traders concentrate in the nearest weekly expiry. Institutions use calendars across multiple expirations to hedge, structure synthetic equity positions, or build directional exposure without showing it in a single chain. Unusual activity in a 3-month or 6-month expiry is more likely institutional than the same activity in 0-DTE. Scanning all 8 nearest expiries ensures we catch the institutional flow regardless of where on the curve it occurs.
+
+**Why detect deep ITM calls as a separate signal?** A call with a strike 15%+ below the current stock price has near-zero optionality — it trades almost identically to owning the stock. Institutions sometimes buy deep ITM calls instead of shares to delay the equity ownership from appearing in their quarterly 13F filings. By buying options rather than stock, they defer the public disclosure by one full quarter. Deep ITM calls with high volume (≥500 contracts) on a stock with no obvious catalyst are a textbook institutional equity-disguise pattern.
+
+**Why use the COT report for individual stock analysis when it covers futures?** COT covers index futures (S&P 500, NASDAQ-100), commodities (gold, oil), and volatility (VIX). For index-correlated stocks (large-cap tech in QQQ, energy in XOM, gold miners), institutional futures positioning is a leading indicator of equity flow. When Asset Managers aggressively net long NASDAQ futures and Leveraged Funds are short, the next equity flow tends to follow the Asset Managers. The `INSTRUMENT_RELEVANCE` mapping connects each futures instrument to the equity tickers it most directly affects.
+
+**Why load the Smart Money Score first before the other panels?** The score endpoint is fast (uses only yfinance insider data which is cached). The dark pool, options, and congress endpoints each make external API calls that can take 2–5 seconds individually. Loading the score card immediately gives the user a directional read while the detailed panels load in parallel. This perceived performance difference is significant in a trading context where the user wants a fast answer and then inspects the detail.

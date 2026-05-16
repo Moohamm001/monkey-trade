@@ -1,6 +1,6 @@
 import React from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { BarChart2, Search, BookOpen, Newspaper, Star, LayoutDashboard, Activity } from 'lucide-react'
+import { BarChart2, Search, BookOpen, Newspaper, Star, LayoutDashboard, Activity, Radar } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
 import CycleDetector from './pages/CycleDetector'
 import Screener from './pages/Screener'
@@ -8,12 +8,14 @@ import Watchlist from './pages/Watchlist'
 import Education from './pages/Education'
 import News from './pages/News'
 import OrderFlow from './pages/OrderFlow'
+import WhaleTracker from './pages/WhaleTracker'
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/cycle', icon: Search, label: 'Cycle Detector' },
   { to: '/screener', icon: BarChart2, label: 'Screener' },
-  { to: '/orderflow', icon: Activity, label: 'Order Flow' },
+  { to: '/orderflow', icon: Activity,  label: 'Order Flow' },
+  { to: '/whale',     icon: Radar,     label: 'Whale Tracker' },
   { to: '/watchlist', icon: Star, label: 'Watchlist' },
   { to: '/news', icon: Newspaper, label: 'Market News' },
   { to: '/education', icon: BookOpen, label: 'Strategy Guide' },
@@ -71,6 +73,7 @@ export default function App() {
           <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/news" element={<News />} />
           <Route path="/orderflow" element={<OrderFlow />} />
+          <Route path="/whale"     element={<WhaleTracker />} />
           <Route path="/education" element={<Education />} />
         </Routes>
       </main>
