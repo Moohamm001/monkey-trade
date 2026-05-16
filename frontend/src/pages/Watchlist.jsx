@@ -52,18 +52,16 @@ export default function Watchlist() {
   }
 
   return (
-    <div className="p-5 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Watchlist</h1>
-          <p className="text-sm text-muted mt-0.5">Track picks with entry, stop loss, target and live cycle stage</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="p-3 space-y-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-bold text-ink">Watchlist</span>
+        <span className="text-xs text-muted">entry · stop · target · live stage</span>
+        <div className="ml-auto flex gap-2">
           <button onClick={load} className="btn-ghost text-xs">
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button onClick={() => setShowForm(v => !v)} className="btn-primary text-xs">
-            <Plus size={13} /> Add Stock
+            <Plus size={12} /> Add
           </button>
         </div>
       </div>
@@ -203,8 +201,8 @@ export default function Watchlist() {
         })}
 
         {!loading && items.length === 0 && (
-          <div className="text-center py-16 text-muted">
-            Your watchlist is empty. Add a stock above to get started.
+          <div className="text-center py-10 text-muted text-sm">
+            Watchlist empty. Add a stock to get started.
           </div>
         )}
       </div>

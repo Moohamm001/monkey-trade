@@ -505,7 +505,7 @@ export default function WhaleTracker() {
   }
 
   return (
-    <div className="p-4 space-y-4 max-w-6xl">
+    <div className="p-3 space-y-3 max-w-6xl">
 
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -559,7 +559,7 @@ export default function WhaleTracker() {
       )}
 
       {data && (
-        <div className="space-y-4">
+        <div className="space-y-3">
 
           {/* ── Score + Top Signals ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

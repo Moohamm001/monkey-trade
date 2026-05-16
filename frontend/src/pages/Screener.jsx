@@ -110,96 +110,86 @@ export default function Screener() {
   ]
 
   return (
-    <div className="p-5 space-y-4">
-      <div>
-        <h1 className="text-xl font-bold text-ink">Stock Screener</h1>
-        <p className="text-sm text-muted mt-0.5">Filter by fundamentals + market cycle stage, click any column to sort</p>
-      </div>
-
+    <div className="p-3 space-y-3">
       {/* ── Filter panel ── */}
-      <div className="card space-y-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <Filter size={14} className="text-primary" /> Filters
+      <div className="card space-y-2.5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <Filter size={13} className="text-primary" /> Stock Screener
+            <span className="text-xs font-normal text-muted">— filter by fundamentals + cycle stage</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={run} disabled={loading} className="btn-primary text-xs flex items-center gap-1.5">
+              <Play size={12} />
+              {loading
+                ? `Scanning ${universe === 'sp500' ? 'S&P 500' : universe === 'top100' ? 'Top 100' : 'custom'}…`
+                : 'Run Screener'}
+            </button>
+            {loading && <span className="text-xs text-muted">{universe === 'sp500' ? '5–10 min' : '~30s'}</span>}
+          </div>
         </div>
 
         {/* Universe selector */}
-        <div>
-          <div className="text-xs text-muted mb-1.5 font-medium">Scan Universe</div>
-          <div className="flex gap-2 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-muted font-medium flex-shrink-0">Universe:</span>
+          <div className="flex gap-1.5 flex-wrap">
             {UNIVERSE_OPTS.map(({ v, label, sub }) => (
               <button key={v} onClick={() => setUniverse(v)}
-                className={`px-3.5 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
                   universe === v
                     ? 'bg-primary text-white border-primary shadow-sm'
                     : 'bg-white border-border text-sub hover:border-primary/40 hover:text-primary'
                 }`}>
                 {label}
-                {sub && <span className={`ml-1.5 text-xs font-normal ${universe === v ? 'opacity-70' : 'text-muted'}`}>{sub}</span>}
+                {sub && <span className={`ml-1 font-normal ${universe === v ? 'opacity-70' : 'text-muted'}`}>{sub}</span>}
               </button>
             ))}
           </div>
           {universe === 'custom' && (
-            <input className="input w-full mt-2" placeholder="AAPL, NVDA, TSLA, MSFT …"
+            <input className="input flex-1 min-w-[200px]" placeholder="AAPL, NVDA, TSLA, MSFT …"
               value={filters.tickers} onChange={e => setF('tickers', e.target.value)} />
           )}
         </div>
 
-        {/* Fundamental filters */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Fundamental filters inline */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted font-medium flex-shrink-0">Filters:</span>
           {[
-            { key: 'min_revenue_growth',  label: 'Min Rev Growth %', ph: 'e.g. 10' },
-            { key: 'min_earnings_growth', label: 'Min Earn Growth %', ph: 'e.g. 5' },
-            { key: 'max_pe',              label: 'Max P/E',           ph: 'e.g. 40' },
-            { key: 'min_net_margin',      label: 'Min Net Margin %',  ph: 'e.g. 5' },
+            { key: 'min_revenue_growth',  label: 'Rev Growth ≥ %', ph: '10' },
+            { key: 'min_earnings_growth', label: 'Earn Growth ≥ %', ph: '5' },
+            { key: 'max_pe',              label: 'P/E ≤',           ph: '40' },
+            { key: 'min_net_margin',      label: 'Margin ≥ %',      ph: '5' },
           ].map(({ key, label, ph }) => (
-            <label key={key} className="block">
-              <span className="text-xs text-muted font-medium">{label}</span>
-              <input className="input w-full mt-1" placeholder={ph}
+            <label key={key} className="flex items-center gap-1">
+              <span className="text-xs text-muted whitespace-nowrap">{label}</span>
+              <input className="input w-16 text-xs" placeholder={ph}
                 value={filters[key]} onChange={e => setF(key, e.target.value)} />
             </label>
           ))}
         </div>
 
-        {/* Stage filter — vivid, color-coded */}
-        <div>
-          <div className="text-xs text-muted font-medium mb-1.5">Cycle Stage (blank = all)</div>
-          <div className="flex gap-2 flex-wrap">
-            {STAGE_CONFIG.map(({ key, label, dot, active, idle }) => {
-              const on = filters.cycle_stages.includes(key)
-              return (
-                <button key={key} onClick={() => toggleStage(key)}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-sm font-semibold transition-all ${on ? active : idle}`}>
-                  <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />
-                  {label}
-                  {on && <span className="text-xs font-normal opacity-70">✓</span>}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 pt-1">
-          <button onClick={run} disabled={loading}
-            className="btn-primary flex items-center gap-2">
-            <Play size={13} />
-            {loading
-              ? `Scanning ${universe === 'sp500' ? 'S&P 500' : universe === 'top100' ? 'Top 100' : 'custom'}…`
-              : 'Run Screener'}
-          </button>
-          {loading && (
-            <span className="text-xs text-muted">
-              {universe === 'sp500' ? 'This may take 5–10 min for S&P 500' : 'Usually ~30s'}
-            </span>
-          )}
+        {/* Stage filter */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted font-medium flex-shrink-0">Stage:</span>
+          {STAGE_CONFIG.map(({ key, label, dot, active, idle }) => {
+            const on = filters.cycle_stages.includes(key)
+            return (
+              <button key={key} onClick={() => toggleStage(key)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold transition-all ${on ? active : idle}`}>
+                <span className={`w-2 h-2 rounded-full ${dot}`} />
+                {label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
       {/* ── Results table ── */}
       {ran && (
         <div className="card p-0 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="text-sm font-semibold text-ink">{results.length} stocks matched</span>
-            <span className="text-xs text-muted">Click column header to sort</span>
+            <span className="text-xs text-muted">Click column to sort</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -245,7 +235,7 @@ export default function Screener() {
             </table>
 
             {results.length === 0 && (
-              <div className="py-16 text-center text-muted">
+              <div className="py-10 text-center text-muted text-sm">
                 No stocks matched your filters
               </div>
             )}

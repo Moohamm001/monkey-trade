@@ -10,21 +10,21 @@
 @layer components {
   /* Cards */
   .card {
-    @apply bg-card rounded-xl shadow-card border border-border p-4;
+    @apply bg-card rounded-xl shadow-card border border-border p-3;
   }
   .card-sm {
-    @apply bg-card rounded-xl shadow-card border border-border p-3;
+    @apply bg-card rounded-xl shadow-card border border-border p-2.5;
   }
 
   /* Buttons */
-  .btn         { @apply px-3.5 py-2 rounded-lg font-medium text-sm transition-all duration-150 inline-flex items-center gap-1.5; }
+  .btn         { @apply px-3 py-1.5 rounded-lg font-medium text-sm transition-all duration-150 inline-flex items-center gap-1.5; }
   .btn-primary { @apply btn bg-primary text-white hover:bg-primary-dark shadow-sm; }
   .btn-ghost   { @apply btn border border-border bg-white hover:bg-surface text-sub hover:text-ink; }
   .btn-danger  { @apply btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100; }
 
   /* Inputs */
   .input {
-    @apply bg-white border border-border rounded-lg px-3 py-2 text-sm text-ink
+    @apply bg-white border border-border rounded-lg px-2.5 py-1.5 text-sm text-ink
            placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50
            transition-all;
   }
@@ -41,8 +41,8 @@
   .signal-neutral { @apply bg-surface     text-sub           border border-border; }
 
   /* Table */
-  .th { @apply px-3 py-2.5 text-xs font-semibold text-sub uppercase tracking-wide whitespace-nowrap text-left; }
-  .td { @apply px-3 py-2.5 text-sm border-b border-border/60; }
+  .th { @apply px-3 py-2 text-xs font-semibold text-sub uppercase tracking-wide whitespace-nowrap text-left; }
+  .td { @apply px-3 py-1.5 text-sm border-b border-border/60; }
 }
 
 /* Scrollbar */
@@ -50,6 +50,21 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #C7D2FE; border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: #A5B4FC; }
+
+/* Sidebar nav link tooltips in collapsed mode */
+[title]:not([title=""]) {
+  position: relative;
+}
+
+/* Smooth page transitions */
+main > * {
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* Sort arrow animation */
 .sort-asc::after  { content: ' ↑'; }

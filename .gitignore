@@ -27,3 +27,7 @@ Thumbs.db
 .idea/
 *.suo
 *.user
+
+*.txt
+*.json
+*.jpg

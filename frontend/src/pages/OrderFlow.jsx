@@ -661,7 +661,7 @@ export default function OrderFlow() {
   const [pipelineStatus, setPipelineStatus] = useState(null)
 
   return (
-    <div className="p-4 space-y-4 max-w-6xl">
+    <div className="p-3 space-y-3 max-w-6xl">
       <div className="flex items-center gap-3">
         <Activity size={18} className="text-primary" />
         <div>

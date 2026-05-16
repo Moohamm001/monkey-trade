@@ -88,43 +88,41 @@ export default function Education() {
   const stage = STAGES.find(s => s.key === active)
 
   return (
-    <div className="p-5 space-y-5 max-w-4xl">
-      <div>
-        <h1 className="text-xl font-bold text-ink">Strategy Guide</h1>
-        <p className="text-sm text-muted mt-0.5">Wyckoff Market Cycle theory + Profit analysis framework</p>
-      </div>
-
-      {/* Stage tabs */}
-      <div className="flex gap-2 flex-wrap">
-        {STAGES.map(s => (
-          <button key={s.key} onClick={() => setActive(s.key)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-full border text-sm font-semibold transition-all ${
-              active === s.key ? s.badge : 'bg-white border-border text-sub hover:border-primary/40'
-            }`}>
-            <span>{s.emoji}</span>
-            {s.label}
-          </button>
-        ))}
+    <div className="p-3 space-y-3 max-w-4xl">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-bold text-ink">Strategy Guide</span>
+        <span className="text-xs text-muted">Wyckoff Market Cycle · Profit analysis</span>
+        <div className="ml-auto flex gap-1.5 flex-wrap">
+          {STAGES.map(s => (
+            <button key={s.key} onClick={() => setActive(s.key)}
+              className={`flex items-center gap-1 px-3 py-1 rounded-full border text-xs font-semibold transition-all ${
+                active === s.key ? s.badge : 'bg-white border-border text-sub hover:border-primary/40'
+              }`}>
+              <span>{s.emoji}</span>
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Stage card */}
       {stage && (
-        <div className={`rounded-xl border p-5 space-y-4 ${stage.cardBg}`}>
-          <div className="flex items-start gap-3">
-            <span className="text-4xl">{stage.emoji}</span>
+        <div className={`rounded-xl border p-3 space-y-3 ${stage.cardBg}`}>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{stage.emoji}</span>
             <div>
-              <h2 className={`text-lg font-bold ${stage.titleColor}`}>{stage.label} Stage</h2>
-              <p className="text-sm text-sub mt-0.5">{stage.summary}</p>
+              <h2 className={`text-sm font-bold ${stage.titleColor}`}>{stage.label} Stage</h2>
+              <p className="text-xs text-sub mt-0.5">{stage.summary}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">What's Happening</div>
-              <ul className="space-y-1.5">
+              <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-1.5">What's Happening</div>
+              <ul className="space-y-1">
                 {stage.details.map((d, i) => (
-                  <li key={i} className={`text-sm flex gap-2 ${stage.titleColor}`}>
-                    <span className="mt-0.5">›</span>
+                  <li key={i} className={`text-xs flex gap-1.5 ${stage.titleColor}`}>
+                    <span>›</span>
                     <span className="text-ink">{d}</span>
                   </li>
                 ))}

@@ -29,13 +29,11 @@ export default function News() {
     : articles
 
   return (
-    <div className="p-5 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Market News & Insights</h1>
-          <p className="text-sm text-muted mt-0.5">Strategy-scored — articles mentioning cycle signals rank higher</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="p-3 space-y-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-bold text-ink">Market News</span>
+        <span className="text-xs text-muted">Strategy-scored — cycle signal mentions rank higher</span>
+        <div className="ml-auto flex gap-2">
           <button onClick={() => setFilter('all')}
             className={`btn text-xs ${filter === 'all' ? 'btn-primary' : 'btn-ghost'}`}>All</button>
           <button onClick={() => setFilter('strategy')}
@@ -54,43 +52,40 @@ export default function News() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
         {displayed.map((a, i) => (
           <a key={i} href={a.link} target="_blank" rel="noopener noreferrer"
             className="card hover:shadow-card-hover transition-shadow group block">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                   <span className="text-xs font-semibold text-primary">{a.source || a.publisher}</span>
                   <span className="text-xs text-muted">{relTime(a.published)}</span>
                   {a.strategy_relevance > 0 && (
-                    <span className="text-xs bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
-                      signal ×{a.strategy_relevance}
+                    <span className="text-xs bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-1.5 py-0.5 font-medium">
+                      ×{a.strategy_relevance}
                     </span>
                   )}
                 </div>
-                <h3 className="text-sm font-medium text-ink group-hover:text-primary transition-colors leading-snug">
+                <h3 className="text-xs font-medium text-ink group-hover:text-primary transition-colors leading-snug">
                   {a.title}
                 </h3>
-                {a.summary && (
-                  <p className="text-xs text-muted mt-1 line-clamp-2">{a.summary}</p>
-                )}
                 {a.tags?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {a.tags.slice(0, 4).map(tag => (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {a.tags.slice(0, 3).map(tag => (
                       <span key={tag} className="text-xs bg-primary-light text-primary rounded px-1.5 py-0.5">{tag}</span>
                     ))}
                   </div>
                 )}
               </div>
-              <ExternalLink size={13} className="text-muted group-hover:text-primary flex-shrink-0 mt-0.5" />
+              <ExternalLink size={12} className="text-muted group-hover:text-primary flex-shrink-0 mt-0.5" />
             </div>
           </a>
         ))}
       </div>
 
       {!loading && displayed.length === 0 && (
-        <div className="text-center py-16 text-muted">No articles. Try refreshing.</div>
+        <div className="text-center py-10 text-muted text-sm">No articles. Try refreshing.</div>
       )}
     </div>
   )

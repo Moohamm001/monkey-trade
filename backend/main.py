@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers import stock, screener, watchlist, news, orderflow, whale
+from .routers import stock, screener, watchlist, news, orderflow, whale, quant, forwardtest, bot, portfolio
 
 app = FastAPI(title="MonkeyTrade API", version="1.0.0")
 
@@ -17,6 +17,10 @@ app.include_router(watchlist.router)
 app.include_router(news.router)
 app.include_router(orderflow.router)
 app.include_router(whale.router)
+app.include_router(quant.router)
+app.include_router(forwardtest.router)
+app.include_router(bot.router)
+app.include_router(portfolio.router)
 
 
 @app.get("/api/health")
