@@ -292,15 +292,15 @@ export default function BotControl() {
       <HelpBanner
         pageKey="bot"
         title="Autonomous Trading Bot"
-        whatIsThis="A self-learning scanner that picks paper trades from your universe, executes them in the virtual portfolio, and adjusts its confidence based on outcomes."
+        whatIsThis="A self-learning scanner that combines four signal layers — Wyckoff cycle + Smart Money Score + per-ticker News Intelligence — into one score, picks paper trades, and adjusts its confidence after each outcome."
         steps={[
-          "Click <b>Run Scan</b> once to test it — see which tickers it would pick and why.",
+          "Click <b>Run Scan</b> once to test it — log shows each stage: <i>pre-filter → cycle → SMS → news</i>, and the final tier per pick.",
           "Click <b>Start Bot</b> to let it scan continuously and place paper trades automatically.",
-          "Watch the <b>Win Rate by Stage</b> bars — that's the bot learning which Wyckoff stages it's good at.",
+          "Watch the <b>Win Rate by Stage</b> bars and the <b>per-event-type news weights</b> — that's the bot learning which Wyckoff stages and which news catalysts (Earnings / M&A / Smart Money …) actually win.",
         ]}
         tips={[
           "Let the bot accumulate <b>at least 50 closed trades</b> before trusting its win-rate stats.",
-          "Smart Money Score chips show how well each pick aligns with insider/13D/dark pool flow.",
+          "Each pick shows its <b>tier</b> (<code>wyckoff+sms+news</code> = all four layers aligned) — higher tiers are higher conviction.",
           "All trades are <b>paper</b> — they hit the virtual $10k portfolio, never real money.",
         ]}
       />

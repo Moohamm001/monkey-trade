@@ -4,12 +4,45 @@ A full-stack stock and crypto analysis web app built on **Wyckoff Market Cycle T
 
 ---
 
+## What's New (May 2026)
+
+A condensed changelog of the most recent session — see "What It Does" below for the full feature catalog.
+
+| Area | Change |
+|------|--------|
+| 📰 **News Intelligence** | New page (`/news`) with multi-source aggregation across 23 reliable RSS / Google News feeds. Per-article event classification, sentiment scoring, ticker extraction, 10-factor signal-scoring framework, bull/base/bear scenarios, historical analogs, and plain-English recommendation. |
+| 👑 **Smart Money Detection** | 5-tier entity lexicon (~100 names): Billionaire Investors, Activists / Short-sellers, Politicians, Mega Institutions, Mega-Cap CEOs. Disambiguates buys vs shorts vs trims via 50+ verbs each direction. Canonical-name map collapses aliases ("Trump" / "Donald Trump" → one entity). |
+| ✨ **Smart Money Spotlight** | Gold-bordered card grid pinned above the main feed; clickable Active-Player chips filter spotlight + main list to a single player. Up to 20 entities tracked; expandable to all detected signals. |
+| 📅 **Day / Week / Month Summary** | New `Summary` tab. Persistent JSON archive (90-day rolling) accumulates on every Intelligence fetch. Daily-sentiment bars, top events histogram, most-active entities, biggest smart-money moves, top opportunity signals. |
+| 🧭 **Order Flow restructure** | Split into three explicit mode tabs — **Stock Mode** (works on any ticker via yfinance), **Crypto Mode** (Binance only — full guided workflow with live tick polling), **Risk Manager** (universal). Fixes the "can't analyze anything" confusion when users typed stock tickers into crypto-only panels. Footprint POC + delta now auto-fills the Trigger Engine. |
+| ❓ **Page-wide Help System** | Reusable `HelpBanner` on every page (Dashboard, Cycle, Screener, Order Flow, Whale, Quant, Bot, Portfolio, Forward Test, Watchlist, News, Education). Dismissible per page via localStorage; collapses to a compact "Help" button when dismissed. Each banner has "What is this", numbered "How to use it", and "Pro tips". |
+| 🎨 **UX polish** | Sidebar **defaults to collapsed** (preference persists). Favicon swapped to the monkey image. Contrast bumped across the News page (replaced low-contrast `text-muted` with `text-sub` / `text-ink`). Pagination on long lists with page-size selector. |
+| 🤖 **Bot now uses every signal layer** | The autonomous scanner now feeds Wyckoff cycle + Smart Money Score + per-ticker News Intelligence (sentiment, smart-money entity detection, event classification) into one combined score. Four-tier adaptive formula auto-detects which layers are available. Bot also learns per-event-type weights (Earnings / M&A / Smart Money …) — remembers which news catalysts win. |
+
+---
+
 ## What It Does
+
+### News & Market Impact Intelligence *(new)*
+- **Multi-source aggregation** — parallel pull from 23 reliable RSS / Google News sources (Yahoo, MarketWatch, CNBC, NASDAQ, Investing.com, Seeking Alpha, WSJ Markets, Reuters, Bloomberg, FT, plus 12 targeted Smart-Money queries). No API keys required
+- **Per-article intelligence layer** — event classification (16 patterns: Earnings / M&A / Insider / Macro / Regulatory / Geopolitical / Short Report / AI Theme / Energy / Crypto / Smart Money…), keyword-based sentiment (-10..+10), ticker extraction validated against a common US universe, expected price-move bands per horizon, and a 10-factor signal-scoring framework
+- **Smart Money detection** — 5-tier entity lexicon (~100 names) covering Billionaire Investors (Buffett, Burry, Ackman, Icahn, Dalio, Tepper, Druckenmiller, Wood, Cohen, Griffin, Klarman…), Activists / Short-sellers (Elliott, Starboard, JANA, Hindenburg, Muddy Waters…), Politicians (Trump, Pelosi, Schumer, Cruz, Tuberville, AOC, Warren, Sanders…), Mega Institutions (BlackRock, Vanguard, Fidelity, Norges Bank…), and Mega-Cap CEOs (Musk, Huang, Cook, Zuckerberg, Pichai, Nadella, Altman, Jassy, Dimon…). Disambiguates "buys" vs "shorts" vs "trims" via 50+ verbs each direction, with a canonical-name map collapsing aliases ("Trump" / "Donald Trump" → one entity)
+- **Smart Money Spotlight** — gold-bordered card grid pinned above the main feed, showing every detected smart-money signal with entity badge + BUY/SELL/MENTIONED pill; clickable Active-Player chips filter the spotlight + main list to a single player (up to 20 entities tracked, full spotlight expandable)
+- **Plain-English action labels** — every card shows `FOLLOW MONEY` / `HEED WARNING` / `STRONG SETUP` / `TRADEABLE` / `WATCHLIST` / `NO ACTION` instead of raw numbers
+- **Pagination + filters** — Event-type filter, min-confidence slider, "Smart Money only" toggle, page-size selector (5/10/15/25), sticky pagination bar
+- **Ticker Lookup** — type a symbol → merged Yahoo Finance + Google News results enriched with the full intelligence engine
+- **Day / Week / Month Summary** — every fetch persists to a 90-day JSON archive (`backend/data/news_archive.json`); the Summary tab aggregates the window into KPI strip (Articles / Smart Money / Tone / Sentiment / Avg Confidence), per-day sentiment bars, top events histogram, top tickers (clickable to drill), most-active smart-money entities with buy/sell counts, biggest smart-money moves, and top opportunity signals. Coverage grows the more you use the app
+
+### Page-wide Help System *(new)*
+- **HelpBanner component** on every page — dismissible per-page (persisted via localStorage) onboarding panel with "What is this", numbered "How to use it" steps, and "Pro tips" sections
+- Comes back as a compact `Help — How does this page work?` button after dismissal so it's always one click away
+- Covers Dashboard, Cycle Detector, Screener, Order Flow, Whale Tracker, Quant Engine, Bot Control, Portfolio, Forward Test, Watchlist, News, and Education
 
 ### Forward Testing & Autonomous Learning Bot *(new)*
 - **Forward Test** — paper-trade any signal in real-time; tracks live P&L, auto-closes when stop/target is hit, and records a daily lesson per trade so you build a personal edge log
-- **Autonomous Bot** — scans ~550 tickers (S&P 500 + ETFs + crypto + popular non-index names) in two stages: fast pre-filter by price/volume, then full Wyckoff cycle detection. Scores setups with a Bayesian model, logs its own paper trades, runs a daily review, and updates its learned weights after every outcome (EMA update rule, α = 0.15)
-- **Learning Model** — starts from Wyckoff-theory priors (markup 65%, accumulation 55%, distribution 40%, markdown 30%), drifts toward what actually works via each closed trade; score threshold auto-adapts to recent win rate
+- **Autonomous Bot** — scans ~550 tickers (S&P 500 + ETFs + crypto + popular non-index names) in **four sequential stages**: (1) fast pre-filter by price/volume → (2) full Wyckoff cycle detection → (3) Smart Money Score enrichment (6-source institutional intel: insiders, 13D/G, dark pool, options flow, congress, COT) → (4) News & Market Impact Intelligence enrichment (per-ticker Yahoo + Google News, sentiment, smart-money entity detection, event classification). Each stage re-scores the candidate pool with progressively richer data
+- **Combined scoring model** — the bot model auto-detects which intelligence layers are available and switches between four formulas: `wyckoff` (35/30/25/10) → `wyckoff+sms` (30/25/20/5/20) → `wyckoff+news` (30/25/20/5/20) → `wyckoff+sms+news` (25/20/20/5/15/15). Every candidate's breakdown records its `tier` so it's auditable
+- **Learning Model** — starts from Wyckoff-theory priors (markup 65%, accumulation 55%, distribution 40%, markdown 30%), drifts toward what actually works via each closed trade; score threshold auto-adapts to recent win rate. Also learns **per-event-type news weights** (Earnings / M&A / Insider / Macro / Smart Money / …) — bot remembers which news catalysts historically preceded winning trades and nudges future scores up or down on the right kinds of news
 - **$10,000 Virtual Portfolio** — fully automated capital allocation. The bot sizes each trade via quarter-Kelly (capped at 20% of available cash, max 6 concurrent positions). Positions open and close automatically — no manual intervention needed. Tracks equity curve, win rate, P&L, and best/worst trades in real time
 
 ### Core Analysis (EOD data via Yahoo Finance)
@@ -836,7 +869,10 @@ monkey-trade3/
 │   │   ├── institutional.py         # Options, short interest, 13F, insiders (EOD)
 │   │   ├── stock_data.py            # yfinance wrappers for price + fundamentals
 │   │   ├── screener.py              # S&P 500 / Top 100 scanning
-│   │   ├── news.py                  # RSS aggregation + relevance scoring
+│   │   ├── news.py                  # News & Market Impact Intelligence — multi-source RSS fan-out,
+│   │   │                            #   event classification, sentiment, Smart Money entity detection
+│   │   │                            #   (Buffett/Burry/Trump/Pelosi/Ackman/BlackRock/Musk + 100 more),
+│   │   │                            #   10-factor signal scoring, scenarios, historical analogs
 │   │   ├── data_pipeline.py         # WebSocket tick ingestion → SQLite
 │   │   ├── footprint.py             # Footprint chart + VPVR from tick data
 │   │   ├── regime_detector.py       # K-Means market regime classification
@@ -861,6 +897,8 @@ monkey-trade3/
 │       ├── bot_model.json           # Persisted learned weights (stage priors, signal weights)
 │       ├── bot_activity.json        # Bot decision log (last 200 entries)
 │       ├── portfolio.json           # Virtual portfolio state (cash, positions, equity curve)
+│       ├── news_archive.json        # Rolling 90-day archive of enriched news articles
+│       │                            #   (dedupe by link) — powers /api/news/summary day/week/month
 │       └── scan_logs/               # Per-scan JSON logs with full ticker decisions
 └── frontend/
     ├── public/
@@ -879,11 +917,16 @@ monkey-trade3/
         │   ├── Portfolio.jsx        # $10k virtual portfolio — equity curve, positions, history
         │   ├── Watchlist.jsx        # Saved tickers + R:R calculator
         │   ├── Education.jsx        # Wyckoff theory guide
-        │   └── News.jsx             # News feed
+        │   └── News.jsx             # News & Market Impact Intelligence — 3 tabs (Intelligence /
+        │                            #   Market Feed / Ticker Lookup), Smart Money Spotlight grid
+        │                            #   with clickable entity filters, pagination, expand/collapse
         └── components/
             ├── StageBadge.jsx
             ├── CandlestickChart.jsx
-            └── StageScoreBar.jsx
+            ├── StageScoreBar.jsx
+            └── HelpBanner.jsx       # Reusable per-page onboarding banner — dismissible,
+                                     #   localStorage-persisted, with "What is this", numbered
+                                     #   "How to use" steps, and "Pro tips" sections
 ```
 
 ---
@@ -924,13 +967,25 @@ start_frontend.bat
 ```
 
 ### Using the Order Flow page
-The Footprint, VPVR, and SVM features require live tick data:
-1. Navigate to **Order Flow** in the sidebar
-2. Enter a Binance symbol (e.g. `BTCUSDT`) and click **Start** to open the WebSocket pipeline
-3. Wait a few minutes for tick data to accumulate in SQLite
-4. Click **Load** on the Footprint panel to visualize volume profile and candle delta
-5. Click **Train** on the SVM panel to train the classifier on the collected data
-6. Use the **Trigger Engine** panel to evaluate a live entry signal
+The Order Flow page is split into three **mode tabs** so you don't get confused between stock-friendly tools and crypto-only tick analysis:
+
+**🟦 Stock Mode** (default — works instantly on any ticker)
+1. Open **Order Flow** → **Stock Mode** is selected by default
+2. Type a ticker (SPY, NVDA, AAPL, BTC-USD…) or click a quick chip
+3. K-Means regime read appears immediately with action guidance and 60-day history chart
+
+**🟧 Crypto Mode** (requires live Binance WebSocket — Binance only)
+1. Click **Crypto Mode** tab
+2. Enter a Binance pair (`BTCUSDT` default, or click a quick chip: ETHUSDT / SOLUSDT / BNBUSDT / XRPUSDT)
+3. Click **Start** — status panel polls every 3 seconds and shows live tick count + latest price
+4. Wait ~30 seconds for tick count to climb above zero. If it stays at 0 for 30+ seconds, your network/firewall is blocking Binance (`stream.binance.com:9443`)
+5. Click **Load** on the Footprint panel — POC, VAH, VAL, and volume profile render; the Trigger Engine **auto-fills** with POC + last price + last candle delta
+6. Click **Train** on the SVM Classifier after ≥ 4 hours of tick collection
+7. Set the SVM signal (0/1) in the Trigger Engine and click **Evaluate Trigger**
+
+**🟪 Risk Manager** (universal — works on any asset)
+1. Click **Risk Manager** tab
+2. Enter account balance → Init → use the position-size calculator for any trade. Kill switch halts on a 5% daily drawdown.
 
 ---
 
@@ -947,7 +1002,15 @@ The Footprint, VPVR, and SVM features require live tick data:
 | `POST` | `/api/screener/run` | Run screener with filters and universe selection |
 | `GET` | `/api/screener/universes` | Available universes with ticker counts |
 | `GET/POST/DELETE` | `/api/watchlist` | Watchlist management |
-| `GET` | `/api/news?limit=20` | General market news feed |
+
+### News & Market Impact Intelligence
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/news?limit=60` | Legacy lightweight market news feed (RSS-only, simple keyword tagging) |
+| `GET` | `/api/news/intelligence?limit=60&min_confidence=0&event_type=Earnings` | Full Intelligence payload — enriched articles + Smart Money spotlight + aggregates. `limit` 5-200, `event_type` optional filter |
+| `GET` | `/api/news/ticker/{ticker}?limit=15` | Per-ticker enriched news (Yahoo Finance + Google News merged, full intelligence applied) |
+| `GET` | `/api/news/stock/{ticker}?limit=12` | Legacy lightweight per-ticker feed |
+| `GET` | `/api/news/summary?period=day\|week\|month` | Day/Week/Month rollup from the persistent archive — sentiment by day, top events, top tickers, most-active entities, biggest smart-money moves |
 
 ### Order Flow (Phase 1–3)
 | Method | Endpoint | Description |
@@ -1042,3 +1105,37 @@ The Footprint, VPVR, and SVM features require live tick data:
 **Why use COT for individual stock analysis when it covers futures?** COT tracks index futures (S&P 500, NASDAQ-100), commodities (gold, oil), and volatility (VIX). For correlated stocks (large-cap tech tracks NASDAQ futures, energy tracks oil futures, gold miners track gold futures), institutional futures positioning is a leading indicator of equity flow. When Asset Managers aggressively go net long NASDAQ futures, the equity money follows — they are the same underlying exposure through different instruments.
 
 **Why load the Smart Money Score first before other panels?** The score endpoint uses yfinance insider data (cached) and computes in ~200ms. The dark pool, options, and congress endpoints each make external API calls taking 2–5 seconds. A user searching for a quick directional read gets the answer in 200ms, then drills into detail panels as they load. This perceived performance gap matters in a trading context.
+
+**Why is the News page rules-driven instead of LLM-powered?** Three reasons. (1) **Cost & latency**: parsing 150+ headlines through an LLM on every page load would be slow and expensive. The rules engine runs in ~10s wall-clock on a ThreadPoolExecutor and ~0¢/call. (2) **Determinism**: the same headline always produces the same score — auditable and easy to debug. (3) **Upgrade path**: the output schema (event_type, sentiment, signal scores, scenarios, recommendation) matches Section 12 of the news_feature spec, so an LLM layer can be slotted in later without breaking the frontend contract.
+
+**Why a fixed Smart Money entity list instead of NER (named-entity recognition)?** Generic NER would flag every person mentioned in business news — most of whom are irrelevant CEOs, analysts, or journalists. A curated ~100-entity list lets us assign **per-tier boost weights** (Billionaire +25, Activist +22, Politician +20, Mega Institution +15, Mega-Cap CEO +12) reflecting actual historical alpha. NER would force us to weight every entity the same, defeating the point.
+
+**Why split smart-money detection across 12 dedicated Google News queries?** General financial RSS feeds are noisy — even with 23 sources, important smart-money news gets buried. A targeted query like `Michael Burry shorts OR buys OR position` pre-filters at the source, surfacing 5-10× more high-signal articles per scan than waiting for them to bubble up through Reuters/Bloomberg/CNBC general feeds. Tested live: 150/150 articles flagged as smart-money when targeted queries are active vs ~28/40 without them.
+
+**Why canonical-name mapping for entities?** Without it, the same person fragments across aliases: "Trump" / "Donald Trump" / "DJT" become three separate entities and the top-entities list is unusable. The `SMART_MONEY_CANONICAL` map collapses ~60 aliases into ~40 canonical entities so aggregation is correct ("Donald Trump ×17" instead of "Trump ×13, Donald Trump ×4").
+
+**Why per-page localStorage dismissal for HelpBanner instead of one global "hide all help" flag?** A user who masters the Dashboard might still be brand-new to Quant Engine or Order Flow — those pages have very different complexity. Each page keeps its own `help_dismissed_<pageKey>` key so dismissal is scoped exactly where the user actually understood the page. Showing the compact `Help — How does this page work?` button after dismissal keeps it always one click away.
+
+**Why a fixed 8-card spotlight by default with expand-to-all?** The spotlight grid lives above the main feed — showing all 150 SM articles by default would push the rest of the page below the fold and slow first render. 8 cards fit comfortably above the fold on most screens; the "Show all N" button reveals the full set when the user wants depth. Same idea as Twitter / Reddit's "show more" — progressive disclosure beats overwhelming up-front density.
+
+**Why route the bot's scan through four sequential intelligence layers (Cycle → SMS → News → score)?** Each layer is expensive in a different way and adds an orthogonal signal. The cycle detector is cheap and runs on the full universe (~550 tickers). Smart Money Score makes 6 external API calls per ticker — capped to the top 20 technical candidates. News intelligence pulls Yahoo Finance + Google News per ticker — capped to top 15. Running all three on every ticker would either rate-limit the free endpoints or take ~15 minutes per scan. Sequencing them as a funnel (cheapest filter first, narrowing the pool before each subsequent step) gets the best signal-to-cost ratio: a full scan still completes in ~60 seconds with all four layers active.
+
+**Why does the bot model use four scoring tiers instead of a single formula?** The scoring formula auto-adapts to whatever intelligence is available. If the news service or smart_money service is broken (network issue, API outage, missing dependency), the bot still scores candidates using the available signals at that moment — it doesn't crash and it doesn't silently use stale data. The `tier` field on each candidate's breakdown (`wyckoff` / `wyckoff+sms` / `wyckoff+news` / `wyckoff+sms+news`) makes it auditable: any user inspecting a scan log can see exactly which inputs went into a given score.
+
+**Why does the bot also learn per-event-type news weights?** The same news catalyst type (Earnings, M&A, Insider, Macro, Smart Money …) historically has very different post-news drift behavior. Smart-Money news (Buffett buys, Pelosi discloses) historically drives multi-day momentum; Macro news fades within 1-2 sessions; Litigation news has long, structural impact. By tracking `news_event_weights` on the model and updating after each closed trade, the bot remembers that — say — "Smart Money news on long markup setups wins 70% of the time, but Earnings news only wins 55%" and nudges future news scores accordingly. Update rule is the same flat EMA used for stage priors (α = 0.15).
+
+**Why split Order Flow into three explicit modes (Stock / Crypto / Risk)?** Users kept reporting "Order Flow not working" because the page mixed two fundamentally different data paths in one screen: (1) Market Regime, which works for any stock via yfinance daily bars, and (2) Footprint / VPVR / SVM / Trigger, which only work for Binance crypto pairs over a live WebSocket. Typing `AAPL` into the Pipeline panel silently failed (Binance rejects unknown symbols), with no visible error. Splitting into mode tabs (with explicit "Stock Mode — works on any ticker" / "Crypto Mode — Binance pairs only" / "Risk Manager — any asset" labels) prevents the wrong tool from being reached for. Stock-only users now see one panel that works immediately; crypto users get a guided workflow with live tick polling.
+
+**Why poll pipeline status every 3 seconds while running?** Before, users started the pipeline and saw `{status: started}` once — but then had no visibility into whether ticks were actually flowing. Many users assumed the pipeline was broken when in fact Binance was blocked by their firewall. The polling shows `tick_count` climbing in real time (or stuck at 0 with a "Connecting…" / "If this persists more than 30 seconds, network may be blocked" banner), turning silent failure into actionable diagnostic.
+
+**Why auto-fill POC + last price + delta from Footprint into the Trigger Engine?** Before, the Trigger Engine required the user to manually copy three floats (POC, current price, volume delta) from the Footprint output into separate input boxes. This was tedious and error-prone. The Footprint panel now publishes those values to a parent-level `triggerPrefill` state via callback, and the Trigger Engine consumes them via `useEffect`. One click = correctly populated trigger evaluation.
+
+**Why a JSON file for the news archive instead of SQLite?** The archive is bounded at ~500 articles × 90 days = ~45k records max. At that scale a single JSON file (~5 MB) with `threading.Lock` for concurrent writes is simpler than maintaining a SQLite schema and migration story for a feature that doesn't need queries beyond "give me everything in the last N days." If the archive ever grows past 100 MB or we need indexed lookups, swap the storage layer behind `_archive_load` / `_archive_save` — the public `summarize()` API doesn't change.
+
+**Why does the archive store a slim subset of article fields?** Full articles include nested `signal.factors` (10 scores), full `scenarios` (3 strings), `analogs`, `impact` bands per horizon — useful in the live Intelligence tab, useless in aggregated summaries. The slim record keeps `title / link / source / published / event_type / sentiment / tickers / smart_money / opportunity / quality / confidence / recommendation`. Cuts archive size by ~80% with no summary capability loss.
+
+**Why prune to 90 days?** Most institutional moves (13F filings, COT cycles, insider clusters) resolve within 90 days. Older history is interesting for backtesting but won't change today's trading decisions, and unbounded growth would eventually hurt write latency. The retention is one constant (`_ARCHIVE_RETENTION_DAYS`) — bump it if you want a longer memory.
+
+**Why does the Summary endpoint compute aggregates on every call instead of caching?** At 90 days × ~500 articles = ~45k records, the full aggregation runs in <100ms — caching is premature optimization. Pull-on-demand also guarantees freshness: every new Intelligence fetch immediately reflects in the next summary call.
+
+**Why client-side pagination on News (vs server-side)?** The intelligence payload is ~150 articles capped at 200. Returning the full enriched array once and paginating in React costs <100KB extra bandwidth but enables instant page changes, sort-direction flips, and filter toggles without round-trips. Below 1000 records, client-side pagination is the simpler and faster UX.

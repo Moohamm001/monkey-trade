@@ -19,20 +19,32 @@ import Trading from './pages/Trading'
 
 const NAV = [
   { to: '/',          icon: LayoutDashboard, label: 'Dashboard',     desc: 'Stock analysis & cycle stage' },
-  { to: '/cycle',     icon: Search,          label: 'Cycle Detector', desc: 'Detect Wyckoff market phases' },
-  { to: '/screener',  icon: BarChart2,        label: 'Screener',       desc: 'Scan stocks by stage' },
   { to: '/orderflow', icon: Activity,         label: 'Order Flow',     desc: 'Bid/ask pressure & tape' },
   { to: '/whale',     icon: Radar,            label: 'Whale Tracker',  desc: 'Institutional volume spikes' },
   { to: '/quant',       icon: FlaskConical, label: 'Quant Engine',  desc: 'HMM · Kalman · Kelly sizing' },
   { to: '/bot',         icon: Bot,          label: 'Auto Bot',       desc: 'Autonomous scanner & learning model' },
   { to: '/portfolio',   icon: Wallet,       label: 'Trading',        desc: 'Portfolio + forward-test paper trades' },
-  { to: '/watchlist',   icon: Star,          label: 'Watchlist',     desc: 'Your saved tickers' },
   { to: '/news',      icon: Newspaper,        label: 'Market News',    desc: 'Latest market headlines' },
+  { to: '/cycle',     icon: Search,          label: 'Cycle Detector', desc: 'Detect Wyckoff market phases' },
+  { to: '/screener',  icon: BarChart2,        label: 'Screener',       desc: 'Scan stocks by stage' },
+  { to: '/watchlist',   icon: Star,          label: 'Watchlist',     desc: 'Your saved tickers' },
   { to: '/education', icon: BookOpen,         label: 'Strategy Guide', desc: 'Learn Wyckoff & cycles' },
 ]
 
 export default function App() {
-  const [collapsed, setCollapsed] = useState(false)
+  // Default: collapsed. User choice persists across sessions via localStorage.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem('sidebar_collapsed') !== '0' }
+    catch { return true }
+  })
+
+  const toggleCollapsed = () => {
+    setCollapsed(v => {
+      const next = !v
+      try { localStorage.setItem('sidebar_collapsed', next ? '1' : '0') } catch {}
+      return next
+    })
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
@@ -99,7 +111,7 @@ export default function App() {
         {/* Collapse toggle */}
         <div className="px-2 py-2 border-t border-border">
           <button
-            onClick={() => setCollapsed(v => !v)}
+            onClick={toggleCollapsed}
             className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-muted hover:bg-surface hover:text-ink transition-colors ${
               collapsed ? 'justify-center' : ''
             }`}

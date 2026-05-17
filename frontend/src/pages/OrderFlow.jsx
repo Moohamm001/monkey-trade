@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import {
   Activity, Play, Square, RefreshCw, CheckCircle, XCircle,
   AlertTriangle, Shield, Zap, Brain, BarChart2,
+  TrendingUp, Bitcoin, Info,
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
@@ -50,11 +51,13 @@ const Pill = ({ ok, label }) => (
 )
 
 // ── 1. Market Regime ──────────────────────────────────────────────────────────
+const REGIME_QUICK = ['SPY', 'QQQ', 'NVDA', 'AAPL', 'TSLA', 'MSFT', 'AMZN', 'BTC-USD']
+
 function RegimePanel() {
   const [ticker, setTicker] = useState('SPY')
   const [input, setInput]   = useState('SPY')
   const [data, setData]     = useState(null)
-  const { call, loading }   = useApi()
+  const { call, loading, error }   = useApi()
 
   const load = useCallback(async (t) => {
     const d = await call(`/api/orderflow/regime/${t}?period=1y`)
@@ -64,17 +67,43 @@ function RegimePanel() {
   useEffect(() => { load(ticker) }, [])
 
   const style = data ? REGIME_COLOR[data.regime] || REGIME_COLOR['Mean-Reverting'] : null
+  const submit = (e) => {
+    e?.preventDefault()
+    const t = input.trim().toUpperCase()
+    if (t) { setTicker(t); load(t) }
+  }
 
   return (
-    <Card title="Market Regime Filter" icon={Brain}>
-      <div className="flex gap-2 mb-3">
+    <Card title="Market Regime — Works on any stock or crypto" icon={Brain}>
+      <form onSubmit={submit} className="flex gap-2 mb-2">
         <input value={input} onChange={e => setInput(e.target.value.toUpperCase())}
-          className="input flex-1 text-sm" placeholder="Ticker" />
-        <button className="btn-primary text-xs px-3"
-          onClick={() => { setTicker(input); load(input) }}>
+          className="input flex-1 text-sm font-mono" placeholder="Ticker — e.g. SPY, NVDA, BTC-USD" />
+        <button type="submit" className="btn-primary text-xs px-3"
+          disabled={loading}>
           {loading ? <RefreshCw size={11} className="animate-spin" /> : 'Analyze'}
         </button>
+      </form>
+
+      {/* Quick chips */}
+      <div className="flex flex-wrap gap-1 mb-3">
+        {REGIME_QUICK.map(t => (
+          <button key={t}
+            onClick={() => { setInput(t); setTicker(t); load(t) }}
+            className={`px-2 py-0.5 rounded-full text-xs font-semibold border transition ${
+              ticker === t
+                ? 'bg-primary text-white border-primary'
+                : 'bg-white border-border text-sub hover:border-primary/50 hover:text-primary'
+            }`}>
+            {t}
+          </button>
+        ))}
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg p-2 mb-2">
+          <AlertTriangle size={11} className="inline mr-1" /> {error}
+        </div>
+      )}
 
       {data && (
         <div className="space-y-3">
@@ -134,6 +163,8 @@ function RegimePanel() {
 }
 
 // ── 2. Data Pipeline ──────────────────────────────────────────────────────────
+const BINANCE_QUICK = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
+
 function PipelinePanel({ onStatusChange }) {
   const [symbol,  setSymbol]  = useState('BTCUSDT')
   const [status,  setStatus]  = useState(null)
@@ -146,6 +177,13 @@ function PipelinePanel({ onStatusChange }) {
 
   useEffect(() => { fetchStatus() }, [])
 
+  // Live polling while pipeline runs so user sees tick count climb
+  useEffect(() => {
+    if (!status?.running) return
+    const id = setInterval(fetchStatus, 3000)
+    return () => clearInterval(id)
+  }, [status?.running, fetchStatus])
+
   const startPipeline = async () => {
     await call(`/api/orderflow/pipeline/start/${symbol}`, { method: 'POST' })
     setTimeout(fetchStatus, 1000)
@@ -156,12 +194,15 @@ function PipelinePanel({ onStatusChange }) {
     setTimeout(fetchStatus, 500)
   }
 
+  const noTicksYet = status?.running && status?.tick_count === 0
+  const startedAgo = status?.latest_ts ? Math.floor((Date.now() - status.latest_ts) / 1000) : null
+
   return (
-    <Card title="WebSocket Data Pipeline" icon={Activity}>
+    <Card title="Crypto Tick Pipeline (Binance only)" icon={Activity}>
       <div className="space-y-3">
         <div className="flex gap-2">
           <input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())}
-            className="input flex-1 text-sm font-mono" placeholder="e.g. BTCUSDT" />
+            className="input flex-1 text-sm font-mono" placeholder="Binance symbol — e.g. BTCUSDT" />
           {status?.running
             ? <button onClick={stopPipeline} className="btn-danger text-xs px-3 flex items-center gap-1">
                 <Square size={10} /> Stop
@@ -171,30 +212,92 @@ function PipelinePanel({ onStatusChange }) {
                 Start
               </button>
           }
-          <button onClick={fetchStatus} className="btn-ghost text-xs px-2">
+          <button onClick={fetchStatus} className="btn-ghost text-xs px-2" title="Refresh status">
             <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
 
+        {/* Quick-start Binance chips */}
+        <div className="flex flex-wrap gap-1">
+          {BINANCE_QUICK.map(s => (
+            <button key={s}
+              onClick={() => setSymbol(s)}
+              disabled={status?.running}
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                symbol === s
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white border-border text-sub hover:border-primary/40 hover:text-primary'
+              } ${status?.running ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+
         {status && (
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${status.running ? 'bg-green-400 animate-pulse' : 'bg-gray-300'}`} />
-              <span className={`text-xs font-semibold ${status.running ? 'text-green-700' : 'text-muted'}`}>
-                {status.running ? `Streaming ${status.symbol}` : 'Idle'}
-              </span>
+          <div className="space-y-2">
+            {/* Live status banner */}
+            <div className={`rounded-lg p-2.5 border ${
+              status.running
+                ? (status.tick_count > 0 ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300')
+                : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${
+                    status.running
+                      ? (status.tick_count > 0 ? 'bg-green-500 animate-pulse' : 'bg-amber-500 animate-pulse')
+                      : 'bg-gray-300'
+                  }`} />
+                  <span className={`text-sm font-bold ${
+                    status.running
+                      ? (status.tick_count > 0 ? 'text-green-800' : 'text-amber-800')
+                      : 'text-sub'
+                  }`}>
+                    {!status.running ? 'Idle — pipeline not started' :
+                     status.tick_count === 0 ? `Connecting to Binance for ${status.symbol}…` :
+                     `Streaming ${status.symbol} live`}
+                  </span>
+                </div>
+                {status.running && status.tick_count > 0 && (
+                  <span className="text-sm font-extrabold text-green-700 font-mono">
+                    {status.tick_count.toLocaleString()} ticks
+                  </span>
+                )}
+              </div>
+              {status.running && status.latest_price && (
+                <div className="mt-1.5 flex items-center gap-3 text-xs">
+                  <span className="text-sub">Latest price:</span>
+                  <span className="font-mono font-bold text-ink">${status.latest_price.toLocaleString()}</span>
+                  {startedAgo != null && startedAgo < 86400 && (
+                    <span className="text-sub">· {startedAgo < 60 ? `${startedAgo}s` : `${Math.floor(startedAgo/60)}m`} ago</span>
+                  )}
+                </div>
+              )}
             </div>
-            <Row label="DB File"     value={status.db_path} vc="text-muted" />
-            <Row label="DB Exists"   value={status.db_exists ? 'Yes' : 'No'} vc={status.db_exists ? 'text-green-600' : 'text-red-500'} />
-            <Row label="SVM Trained" value={status.svm_trained ? 'Yes' : 'No'} vc={status.svm_trained ? 'text-green-600' : 'text-amber-600'} />
-            <Row label="Risk Mgr"    value={status.risk_initialized ? 'Ready' : 'Not init'} vc={status.risk_initialized ? 'text-green-600' : 'text-amber-600'} />
+
+            {/* Setup checklist */}
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
+              <Pill ok={status.db_exists} label={status.db_exists ? 'DB ready' : 'No DB'} />
+              <Pill ok={status.running}   label={status.running ? 'Streaming' : 'Stopped'} />
+              <Pill ok={status.svm_trained}      label={status.svm_trained ? 'SVM trained' : 'SVM not trained'} />
+              <Pill ok={status.risk_initialized} label={status.risk_initialized ? 'Risk ready' : 'Risk not init'} />
+            </div>
           </div>
         )}
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-700 leading-relaxed">
-          <strong>How it works:</strong> Opens two Binance WebSocket streams — aggTrade (every matched trade)
-          and depth5@100ms (top-5 bid/ask ladder). Trades are batched in memory and flushed
-          to SQLite every 100 ticks to minimise write latency. Requires internet access to Binance.
+        {noTicksYet && (
+          <div className="bg-amber-50 border border-amber-300 rounded-lg p-2.5 text-xs text-amber-800">
+            <AlertTriangle size={12} className="inline mr-1" />
+            <b>Waiting for first trade.</b> If this persists more than 30 seconds, Binance may be blocked
+            by your network/firewall (corporate / VPN). Try a VPN or check that <code>stream.binance.com:9443</code> is reachable.
+          </div>
+        )}
+
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-800 leading-relaxed">
+          <strong>What this does:</strong> Opens a live WebSocket to Binance and writes every trade for
+          your chosen symbol into a local SQLite database. Required for the <b>Footprint</b>, <b>SVM Classifier</b>,
+          and <b>Trigger Engine</b> panels below — but <u>NOT</u> for the <b>Market Regime</b> panel (that uses Yahoo Finance).
+          <br /><strong>Stock tickers don't work here</strong> — use a Binance crypto pair like BTCUSDT.
         </div>
       </div>
     </Card>
@@ -202,15 +305,30 @@ function PipelinePanel({ onStatusChange }) {
 }
 
 // ── 3. Footprint + VPVR ───────────────────────────────────────────────────────
-function FootprintPanel({ pipelineRunning }) {
-  const [symbol, setSymbol] = useState('BTCUSDT')
+function FootprintPanel({ pipelineRunning, pipelineSymbol, onPocLoaded }) {
+  const [symbol, setSymbol] = useState(pipelineSymbol || 'BTCUSDT')
   const [data,   setData]   = useState(null)
   const { call, loading }   = useApi()
 
+  useEffect(() => {
+    if (pipelineSymbol) setSymbol(pipelineSymbol)
+  }, [pipelineSymbol])
+
   const load = useCallback(async () => {
     const d = await call(`/api/orderflow/footprint/${symbol}?minutes=60`)
-    if (d) setData(d)
-  }, [call, symbol])
+    if (d) {
+      setData(d)
+      // Auto-feed POC + last candle delta into the Trigger Engine panel
+      if (d.vpvr?.poc && d.candles?.length) {
+        const last = d.candles[d.candles.length - 1]
+        onPocLoaded?.({
+          poc: d.vpvr.poc,
+          last_price: last?.close,
+          last_delta: last?.delta,
+        })
+      }
+    }
+  }, [call, symbol, onPocLoaded])
 
   const vpvr    = data?.vpvr   || {}
   const candles = data?.candles || []
@@ -532,11 +650,22 @@ function RiskPanel() {
 }
 
 // ── 6. Trigger Engine ─────────────────────────────────────────────────────────
-function TriggerPanel() {
+function TriggerPanel({ prefilled }) {
   const [form, setForm] = useState({
     current_price: '', poc: '', volume_delta: '',
     svm_signal: '0', svm_confidence: '0',
   })
+
+  // Auto-fill when Footprint loads new data
+  useEffect(() => {
+    if (!prefilled) return
+    setForm(f => ({
+      ...f,
+      poc:           prefilled.poc != null        ? String(prefilled.poc.toFixed(4)) : f.poc,
+      current_price: prefilled.last_price != null ? String(prefilled.last_price.toFixed(4)) : f.current_price,
+      volume_delta:  prefilled.last_delta != null ? String(prefilled.last_delta.toFixed(4)) : f.volume_delta,
+    }))
+  }, [prefilled])
   const [result, setResult] = useState(null)
   const { call, loading }   = useApi()
 
@@ -660,22 +789,25 @@ function TriggerPanel() {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function OrderFlow() {
   const [pipelineStatus, setPipelineStatus] = useState(null)
+  const [triggerPrefill, setTriggerPrefill] = useState(null)
+  const [mode, setMode] = useState('stock')  // 'stock' | 'crypto' | 'risk'
 
   return (
     <div className="p-3 space-y-3 max-w-6xl">
       <HelpBanner
         pageKey="orderflow"
         title="Order Flow Intelligence"
-        whatIsThis="Reads the micro-structure of the tape — buying vs selling pressure, market regime (Trending / Mean-Reverting / High Vol), and whether flow looks Institutional vs Retail."
+        whatIsThis="Two distinct tools in one page. <b>Stock Mode</b> works out-of-the-box — classifies any stock into Trending / Mean-Reverting / High-Volatility regime. <b>Crypto Mode</b> requires a live Binance WebSocket stream to provide tick-level footprint, order-flow ML, and trigger signals (Binance only)."
         steps={[
-          "Type a ticker in the <b>Market Regime</b> panel and load — it tells you which regime the stock is in right now.",
+          "Start with <b>Stock Mode</b> — type a ticker (SPY, NVDA, AAPL, BTC-USD…) → instant regime read with action guidance.",
           "Match your strategy to the regime: <b>Trending → breakouts</b>, <b>Mean-Reverting → fade extremes</b>, <b>High Vol → reduce size or stay flat</b>.",
-          "Use the <b>Institutional Flow</b> panel to confirm whether large players are accumulating — go long with them, not against.",
+          "If you trade crypto, switch to <b>Crypto Mode</b> → Start the pipeline with a Binance symbol (BTCUSDT). Wait ~30 seconds for ticks to accumulate, then Load Footprint, Train SVM, and the Trigger Engine auto-fills from your data.",
+          "Use <b>Risk Manager</b> any time — works independently for sizing trades on any asset.",
         ]}
         tips={[
-          "Same news behaves <b>differently</b> in different regimes — always check regime first.",
-          "Order imbalances ≥ <b>3:1 (buy:sell)</b> at the Point of Control are high-conviction entries.",
-          "If volatility regime flips, <b>tighten stops or exit</b> — breakouts fail far more often in High-Vol.",
+          "<b>Same news behaves differently in different regimes</b> — always check the regime first.",
+          "<b>Stock tickers do NOT work</b> in Crypto Mode panels — only Binance pairs (BTCUSDT, ETHUSDT…).",
+          "If Binance pipeline shows 'Connecting…' for 30+ seconds, your network/firewall is likely blocking it.",
         ]}
       />
 
@@ -683,40 +815,106 @@ export default function OrderFlow() {
         <Activity size={18} className="text-primary" />
         <div>
           <h1 className="text-lg font-bold text-ink">Order Flow Intelligence</h1>
-          <p className="text-xs text-muted">Tick data · Footprint · Market Regime · Institutional SVM · Risk Management</p>
+          <p className="text-xs text-sub">Stock regime classification · Crypto tick footprint · Risk-managed execution</p>
         </div>
       </div>
 
-      {/* Phase labels */}
-      <div className="flex gap-2 flex-wrap text-xs">
-        {[
-          { label: 'Phase 1: Data & Footprint', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-          { label: 'Phase 2: ML Models',        color: 'bg-purple-100 text-purple-700 border-purple-200' },
-          { label: 'Phase 3: Risk & Execution', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-        ].map(p => (
-          <span key={p.label} className={`px-2.5 py-1 rounded-full border font-semibold ${p.color}`}>
-            {p.label}
-          </span>
-        ))}
+      {/* Mode tabs */}
+      <div className="flex gap-1.5 flex-wrap border-b border-border">
+        <button onClick={() => setMode('stock')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition rounded-t-lg ${
+            mode === 'stock'
+              ? 'border-primary text-primary bg-primary/5'
+              : 'border-transparent text-sub hover:text-ink hover:bg-surface'
+          }`}>
+          <TrendingUp size={14} /> Stock Mode
+          <span className="text-xs font-normal text-sub">— works on any ticker</span>
+        </button>
+        <button onClick={() => setMode('crypto')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition rounded-t-lg ${
+            mode === 'crypto'
+              ? 'border-primary text-primary bg-primary/5'
+              : 'border-transparent text-sub hover:text-ink hover:bg-surface'
+          }`}>
+          <Bitcoin size={14} /> Crypto Mode
+          <span className="text-xs font-normal text-sub">— Binance pairs only</span>
+          {pipelineStatus?.running && (
+            <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">
+              LIVE
+            </span>
+          )}
+        </button>
+        <button onClick={() => setMode('risk')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition rounded-t-lg ${
+            mode === 'risk'
+              ? 'border-primary text-primary bg-primary/5'
+              : 'border-transparent text-sub hover:text-ink hover:bg-surface'
+          }`}>
+          <Shield size={14} /> Risk Manager
+          <span className="text-xs font-normal text-sub">— any asset</span>
+        </button>
       </div>
 
-      {/* Phase 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <PipelinePanel onStatusChange={setPipelineStatus} />
-        <FootprintPanel pipelineRunning={pipelineStatus?.running} />
-      </div>
+      {/* ── STOCK MODE ──────────────────────────────────────────────── */}
+      {mode === 'stock' && (
+        <div className="space-y-3">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-800 flex items-start gap-2">
+            <Info size={13} className="flex-shrink-0 mt-0.5" />
+            <span>
+              <b>Stock Mode</b> uses Yahoo Finance daily price history — works instantly on any stock or ETF.
+              K-Means clusters 5 indicators (ATR, ADX, MA spread, 20d vol, momentum) into one of three regimes,
+              with a confidence based on the last 20 days of agreement.
+            </span>
+          </div>
+          <RegimePanel />
+        </div>
+      )}
 
-      {/* Phase 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <RegimePanel />
-        <ClassifierPanel pipelineSymbol={pipelineStatus?.symbol} />
-      </div>
+      {/* ── CRYPTO MODE ─────────────────────────────────────────────── */}
+      {mode === 'crypto' && (
+        <div className="space-y-3">
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3 text-sm text-amber-900">
+            <div className="font-bold flex items-center gap-1.5 mb-1">
+              <Bitcoin size={14} /> Crypto Mode — requires live Binance connection
+            </div>
+            <ol className="text-xs space-y-0.5 ml-5 list-decimal text-amber-900">
+              <li><b>Start the pipeline</b> with a Binance symbol (BTCUSDT default)</li>
+              <li><b>Wait ~30 seconds</b> for tick count to climb above zero</li>
+              <li><b>Load the Footprint</b> — auto-feeds POC + delta into the Trigger Engine</li>
+              <li><b>Train the SVM</b> on ≥ 4 hours of accumulated data, then plug 0/1 into the Trigger</li>
+            </ol>
+          </div>
 
-      {/* Phase 3 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <RiskPanel />
-        <TriggerPanel />
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <PipelinePanel onStatusChange={setPipelineStatus} />
+            <FootprintPanel
+              pipelineRunning={pipelineStatus?.running}
+              pipelineSymbol={pipelineStatus?.symbol}
+              onPocLoaded={setTriggerPrefill}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ClassifierPanel pipelineSymbol={pipelineStatus?.symbol} />
+            <TriggerPanel prefilled={triggerPrefill} />
+          </div>
+        </div>
+      )}
+
+      {/* ── RISK MANAGER ────────────────────────────────────────────── */}
+      {mode === 'risk' && (
+        <div className="space-y-3">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-800 flex items-start gap-2">
+            <Info size={13} className="flex-shrink-0 mt-0.5" />
+            <span>
+              Independent of stock/crypto mode. Initialise with your account balance, then use the
+              <b> position sizing calculator</b> for any trade. The <b>kill switch</b> halts trading when
+              daily drawdown crosses the threshold.
+            </span>
+          </div>
+          <RiskPanel />
+        </div>
+      )}
     </div>
   )
 }

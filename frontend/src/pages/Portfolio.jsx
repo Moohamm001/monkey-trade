@@ -7,6 +7,7 @@ import {
   DollarSign, TrendingUp, TrendingDown, Activity,
   RefreshCw, RotateCcw, Layers, Award, AlertCircle,
 } from 'lucide-react'
+import HelpBanner from '../components/HelpBanner'
 
 const API = 'http://localhost:8000'
 

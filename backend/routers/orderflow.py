@@ -237,7 +237,28 @@ def stop_pipeline():
     return {"status": "not_running"}
 
 @router.get("/pipeline/status")
-def pipeline_status():
+async def pipeline_status():
+    """Returns live status including tick count and latest price so the UI
+    can show progress while the pipeline is collecting data."""
+    tick_count = 0
+    latest_price = None
+    latest_ts = None
+    if _pipeline and DB_PATH.exists():
+        try:
+            import aiosqlite
+            async with aiosqlite.connect(DB_PATH) as db:
+                cur = await db.execute(
+                    "SELECT COUNT(*), MAX(timestamp), MAX(price) FROM trades WHERE symbol=?",
+                    (_pipeline.symbol,),
+                )
+                row = await cur.fetchone()
+                if row:
+                    tick_count   = int(row[0] or 0)
+                    latest_ts    = int(row[1]) if row[1] else None
+                    latest_price = float(row[2]) if row[2] else None
+        except Exception:
+            pass
+
     return {
         "running":     bool(_pipeline and _pipeline._running),
         "symbol":      _pipeline.symbol if _pipeline else None,
@@ -245,4 +266,7 @@ def pipeline_status():
         "db_exists":   DB_PATH.exists(),
         "svm_trained": _svm_pipeline is not None,
         "risk_initialized": _risk_manager is not None,
+        "tick_count":  tick_count,
+        "latest_price": latest_price,
+        "latest_ts":    latest_ts,
     }

@@ -38,6 +38,14 @@ try:
 except Exception:
     _HAS_SMART_MONEY = False
 
+# News & Market Impact Intelligence — slow (RSS + Google News per ticker).
+# Lazy-imported so the bot still scans if the news service is broken.
+try:
+    from .news import get_news_score_for_ticker
+    _HAS_NEWS = True
+except Exception:
+    _HAS_NEWS = False
+
 # ── paths ─────────────────────────────────────────────────────────────────────
 
 STORE        = os.path.join(os.path.dirname(__file__), "..", "forwardtest_data.json")
@@ -462,21 +470,143 @@ def _enrich_with_smart_money(
     return combined
 
 
+# ── News enrichment ──────────────────────────────────────────────────────────
+
+def _fetch_news(ticker: str, direction: str) -> Optional[dict]:
+    """Return a news context dict for a ticker, or None if unavailable."""
+    if not _HAS_NEWS:
+        return None
+    try:
+        ctx = get_news_score_for_ticker(ticker, direction=direction, limit=12)
+        return ctx if ctx.get("available") else None
+    except Exception:
+        return None
+
+
+def _enrich_with_news(
+    candidates: list[dict],
+    scan_log: dict,
+    emit: Optional[callable] = None,
+    max_news: int = 15,
+    workers: int = 5,
+) -> list[dict]:
+    """
+    For the top-N candidates already enriched with SMS, fetch the per-ticker
+    News Intelligence in parallel and fold the news_score into the bot model.
+    Capped at N because each call pulls Yahoo Finance + Google News RSS — adding
+    real latency. Tickers that fail enrichment keep their previous score.
+
+    Direction-aware: long candidates (accumulation / markup) are rewarded for
+    bullish news, short candidates (markdown) for bearish news. Smart Money
+    entities mentioned in the news (Buffett/Burry/Trump/Pelosi/Ackman …) add
+    or subtract a bonus depending on direction alignment.
+    """
+    if not candidates or not _HAS_NEWS:
+        return candidates
+
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    enrich_set = candidates[:max_news]
+
+    if emit:
+        emit(f"📰 News enrichment: pulling per-ticker headlines for top {len(enrich_set)} candidates "
+             f"({workers} workers, Yahoo + Google News each)…")
+
+    def _job(c: dict) -> tuple[str, Optional[dict]]:
+        direction = "short" if c["stage"] == "markdown" else "long"
+        return c["ticker"], _fetch_news(c["ticker"], direction)
+
+    news_results: dict[str, Optional[dict]] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_job, c): c["ticker"] for c in enrich_set}
+        for fut in as_completed(futures):
+            t = futures[fut]
+            try:
+                _, ctx = fut.result()
+                news_results[t] = ctx
+            except Exception:
+                news_results[t] = None
+
+    for c in enrich_set:
+        ctx = news_results.get(c["ticker"])
+        if ctx is None:
+            c["news_context"] = None
+            continue
+
+        event_types = [et for et, _ in (ctx.get("top_event_types") or [])]
+        new_score, new_breakdown = bot_model.score_setup(
+            stage             = c["stage"],
+            signals           = c["signals"],
+            confidence        = c["confidence"],
+            volume_ratio      = c.get("vol_ratio", 1.0),
+            smart_money_score = c.get("smart_money_score"),
+            news_score        = ctx["score"],
+            news_event_types  = event_types,
+        )
+        c["score"]        = new_score
+        c["breakdown"]    = new_breakdown
+        c["news_context"] = ctx
+
+        # Update scan log entry for visibility
+        for r in scan_log["results"]:
+            if r.get("ticker") == c["ticker"] and r.get("decision") in (
+                "candidate", "below_threshold", "below_threshold_after_sms",
+            ):
+                r["news_score"]      = ctx["score"]
+                r["news_tone"]       = ctx["tone"]
+                r["news_articles"]   = ctx["article_count"]
+                r["news_sm_buy"]     = ctx["smart_money_buy"]
+                r["news_sm_sell"]    = ctx["smart_money_sell"]
+                r["score"]           = round(new_score, 4)
+                r["decision"]        = "candidate" if new_breakdown["passes"] else "below_threshold_after_news"
+                if not new_breakdown["passes"]:
+                    r["reason"] = f"score {new_score:.3f} < threshold after news ({ctx['reason']})"
+
+        if emit:
+            verdict = "✓" if new_breakdown["passes"] else "✗"
+            emit(f"  {verdict} {c['ticker']:6s} news={ctx['score']:.2f} ({ctx['tone']:7s}) "
+                 f"art={ctx['article_count']:2d} SM={ctx['smart_money_buy']}B/{ctx['smart_money_sell']}S "
+                 f"→ score {new_score:.3f}")
+
+    # Drop candidates that dropped below threshold after news re-score.
+    survivors = [c for c in enrich_set
+                 if c.get("news_context") is None or c["breakdown"]["passes"]]
+
+    # Tail (candidates we didn't enrich) kept as fallback at the bottom.
+    tail = candidates[max_news:]
+    combined = survivors + tail
+    combined.sort(key=lambda c: c["score"], reverse=True)
+    return combined
+
+
 # ── trade logging ─────────────────────────────────────────────────────────────
 
-def _build_reasoning(ticker, stage, score, breakdown, signals, confidence, cycle) -> str:
+def _build_reasoning(ticker, stage, score, breakdown, signals, confidence, cycle, news_ctx=None) -> str:
     ind  = cycle.get("indicators", {})
     rsi  = ind.get("rsi")
     macd = ind.get("macd_diff", 0)
+    tier = breakdown.get("tier", "wyckoff")
     parts = [
-        f"Bot selected {ticker} | {stage.upper()} stage | score={score:.3f} (thr={breakdown['threshold']:.3f}).",
+        f"Bot selected {ticker} | {stage.upper()} stage | score={score:.3f} (thr={breakdown['threshold']:.3f}) | tier={tier}.",
         f"Stage prior={breakdown['stage_score']*100:.0f}% | Signal avg={breakdown['signal_score']*100:.0f}% | Confidence={confidence*100:.0f}%.",
     ]
     sms_raw = breakdown.get("smart_money_raw")
     if sms_raw is not None:
         parts.append(f"Smart Money Score={sms_raw:.0f}/100 (institutional alignment).")
+    if news_ctx and news_ctx.get("available"):
+        news_bits = [
+            f"News tone={news_ctx['tone']}",
+            f"{news_ctx['bullish_count']}↑/{news_ctx['bearish_count']}↓ ({news_ctx['article_count']} arts)",
+            f"avg_opp={news_ctx['avg_opportunity']}",
+        ]
+        if news_ctx['smart_money_buy'] or news_ctx['smart_money_sell']:
+            news_bits.append(f"SM news {news_ctx['smart_money_buy']}B/{news_ctx['smart_money_sell']}S")
+        if news_ctx['smart_money_entities']:
+            news_bits.append("entities: " + ", ".join(news_ctx['smart_money_entities'][:3]))
+        parts.append("News: " + " | ".join(news_bits) + ".")
+        if news_ctx.get("headline_top"):
+            parts.append(f'Top headline: "{news_ctx["headline_top"][:120]}".')
     if signals:
-        parts.append(f"Signals: {', '.join(signals)}.")
+        parts.append(f"Wyckoff signals: {', '.join(signals)}.")
     if rsi:
         parts.append(f"RSI={rsi:.1f}, MACD_diff={macd:.4f}.")
     action = cycle.get("stage_info", {}).get("action", "")
@@ -522,9 +652,10 @@ def log_trades_autonomously(candidates: list[dict]) -> list[dict]:
             # Portfolio full or out of cash — skip this candidate
             continue
 
+        news_ctx = c.get("news_context")
         reasoning = _build_reasoning(
             ticker, stage, score, c["breakdown"],
-            c["signals"], c["confidence"], cycle,
+            c["signals"], c["confidence"], cycle, news_ctx=news_ctx,
         )
 
         pending.append({
@@ -546,6 +677,8 @@ def log_trades_autonomously(candidates: list[dict]) -> list[dict]:
             "source":                "bot",
             "bot_score":             round(score, 4),
             "smart_money_score":     c.get("smart_money_score"),
+            "news_context":          news_ctx,
+            "score_tier":            c["breakdown"].get("tier"),
             "current_price":         entry,
             "unrealized_pnl_pct":    0.0,
             "unrealized_pnl_dollar": 0.0,
@@ -618,6 +751,11 @@ def scan_universe(
     # Re-scores top technical candidates with the 6-source institutional
     # intelligence (insiders, dark pool, options flow, IV skew, congress, COT).
     candidates = _enrich_with_smart_money(candidates, scan_log, emit=emit, max_sms=20)
+
+    # ── Stage 4: News & Market Impact Intelligence enrichment ─────────────────
+    # Folds per-ticker news scoring (tone, opportunity, smart-money entity
+    # mentions like Buffett / Burry / Pelosi / Trump / Ackman) into the model.
+    candidates = _enrich_with_news(candidates, scan_log, emit=emit, max_news=15)
 
     # ── Finalise ──────────────────────────────────────────────────────────────
     candidates.sort(key=lambda c: c["score"], reverse=True)

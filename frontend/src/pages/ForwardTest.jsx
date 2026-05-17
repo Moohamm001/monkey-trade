@@ -5,6 +5,7 @@ import {
   Target, Shield, Zap, Award, AlertTriangle
 } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
+import HelpBanner from '../components/HelpBanner'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const pct = v => v == null ? '—' : `${v > 0 ? '+' : ''}${v}%`

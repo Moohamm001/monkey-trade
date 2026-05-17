@@ -101,6 +101,19 @@ def update_from_trade(trade: dict):
                 sw["weight"] = round(sw["weight"] * (1 - eff_alpha) + outcome * eff_alpha, 4)
                 sw["n"] += 1
 
+        # ── News event-type weights: flat EMA update per detected event ──────
+        # The bot remembers which news event types (Earnings / M&A / Smart Money
+        # / Macro / Insider …) correlated with winning trades so it can nudge
+        # future news scores up or down on the right kinds of catalysts.
+        if "news_event_weights" not in m:
+            m["news_event_weights"] = {}
+        news_ctx     = trade.get("news_context") or {}
+        event_types  = [et for et, _ in (news_ctx.get("top_event_types") or [])]
+        for et in event_types:
+            ew = m["news_event_weights"].setdefault(et, {"weight": 0.50, "n": 0})
+            ew["weight"] = round(ew["weight"] * (1 - alpha) + outcome * alpha, 4)
+            ew["n"]      = ew.get("n", 0) + 1
+
         m["trades_learned_from"] += 1
 
         perf_entry = {
@@ -150,17 +163,32 @@ def score_setup(
     confidence: float,
     volume_ratio: float = 1.0,
     smart_money_score: Optional[float] = None,
+    news_score: Optional[float] = None,
+    news_event_types: Optional[list[str]] = None,
 ) -> tuple[float, dict]:
     """
     Returns (score 0–1, breakdown dict).
 
-    Base formula (no Smart Money Score available):
+    Weighting strategy (re-balances as more intelligence becomes available):
+
+      Tier 1 — Wyckoff only:
         score = stage*0.35 + signal*0.30 + confidence*0.25 + volume*0.10
 
-    With Smart Money Score (institutional alignment):
+      Tier 2 — Wyckoff + Smart Money Score (whale tracker):
         score = stage*0.30 + signal*0.25 + confidence*0.20 + volume*0.05 + sms*0.20
 
-    Smart Money Score is normalised to [0, 1] (raw is 0–100).
+      Tier 3 — Wyckoff + SMS + News Intelligence (every signal layer):
+        score = stage*0.25 + signal*0.20 + confidence*0.20 + volume*0.05
+                + sms*0.15 + news*0.15
+
+    All intel scores are normalised to [0, 1]. News score combines:
+    direction alignment with the trade, average opportunity score across recent
+    articles, and a bonus/penalty for Smart-Money entities mentioned in the news
+    (Buffett buy vs Burry short, etc.).
+
+    Per-event-type learning: if news_event_types is given, the average learned
+    weight per event ("Earnings", "M&A", "Smart Money", …) gently nudges the
+    news component up or down.
     """
     m = load_model()
 
@@ -171,7 +199,47 @@ def score_setup(
 
     vol_score = min(1.0, volume_ratio / 2.5)   # normalise: 2.5× avg → 1.0
 
-    if smart_money_score is not None:
+    # Optional: learned event-type weights nudge the news score (±0.10 cap)
+    event_weights = m.get("news_event_weights", {})
+    event_nudge = 0.0
+    if news_event_types and event_weights:
+        ews = [event_weights.get(et, {}).get("weight", 0.50) for et in news_event_types]
+        if ews:
+            avg_ew    = sum(ews) / len(ews)
+            event_nudge = (avg_ew - 0.50) * 0.20    # ±0.10 max
+
+    have_sms  = smart_money_score is not None
+    have_news = news_score is not None
+
+    if have_sms and have_news:
+        sms_norm  = max(0.0, min(1.0, smart_money_score / 100.0))
+        news_norm = max(0.0, min(1.0, news_score + event_nudge))
+        score = (
+            stage_score   * 0.25 +
+            signal_score  * 0.20 +
+            confidence    * 0.20 +
+            vol_score     * 0.05 +
+            sms_norm      * 0.15 +
+            news_norm     * 0.15
+        )
+        breakdown = {
+            "stage_score":   round(stage_score, 4),
+            "signal_score":  round(signal_score, 4),
+            "confidence":    round(confidence, 4),
+            "vol_score":     round(vol_score, 4),
+            "smart_money":   round(sms_norm, 4),
+            "smart_money_raw": round(smart_money_score, 1),
+            "news":          round(news_norm, 4),
+            "news_raw":      round(news_score, 4),
+            "event_nudge":   round(event_nudge, 4),
+            "total":         round(score, 4),
+            "threshold":     m["min_score_threshold"],
+            "passes":        score >= m["min_score_threshold"],
+            "weights":       {"stage": 0.25, "signal": 0.20, "confidence": 0.20,
+                              "volume": 0.05, "smart_money": 0.15, "news": 0.15},
+            "tier":          "wyckoff+sms+news",
+        }
+    elif have_sms:
         sms_norm = max(0.0, min(1.0, smart_money_score / 100.0))
         score = (
             stage_score   * 0.30 +
@@ -187,11 +255,38 @@ def score_setup(
             "vol_score":     round(vol_score, 4),
             "smart_money":   round(sms_norm, 4),
             "smart_money_raw": round(smart_money_score, 1),
+            "news":          None,
             "total":         round(score, 4),
             "threshold":     m["min_score_threshold"],
             "passes":        score >= m["min_score_threshold"],
             "weights":       {"stage": 0.30, "signal": 0.25, "confidence": 0.20,
                               "volume": 0.05, "smart_money": 0.20},
+            "tier":          "wyckoff+sms",
+        }
+    elif have_news:
+        news_norm = max(0.0, min(1.0, news_score + event_nudge))
+        score = (
+            stage_score   * 0.30 +
+            signal_score  * 0.25 +
+            confidence    * 0.20 +
+            vol_score     * 0.05 +
+            news_norm     * 0.20
+        )
+        breakdown = {
+            "stage_score":   round(stage_score, 4),
+            "signal_score":  round(signal_score, 4),
+            "confidence":    round(confidence, 4),
+            "vol_score":     round(vol_score, 4),
+            "smart_money":   None,
+            "news":          round(news_norm, 4),
+            "news_raw":      round(news_score, 4),
+            "event_nudge":   round(event_nudge, 4),
+            "total":         round(score, 4),
+            "threshold":     m["min_score_threshold"],
+            "passes":        score >= m["min_score_threshold"],
+            "weights":       {"stage": 0.30, "signal": 0.25, "confidence": 0.20,
+                              "volume": 0.05, "news": 0.20},
+            "tier":          "wyckoff+news",
         }
     else:
         score = (
@@ -206,10 +301,12 @@ def score_setup(
             "confidence":    round(confidence, 4),
             "vol_score":     round(vol_score, 4),
             "smart_money":   None,
+            "news":          None,
             "total":         round(score, 4),
             "threshold":     m["min_score_threshold"],
             "passes":        score >= m["min_score_threshold"],
             "weights":       {"stage": 0.35, "signal": 0.30, "confidence": 0.25, "volume": 0.10},
+            "tier":          "wyckoff",
         }
 
     return round(score, 4), breakdown

@@ -6,6 +6,7 @@ from ..services.news import (
     fetch_intelligence,
     fetch_stock_news,
     fetch_ticker_intelligence,
+    summarize,
 )
 
 router = APIRouter(prefix="/api/news", tags=["news"])
@@ -41,3 +42,13 @@ def ticker_news(ticker: str, limit: int = Query(15, ge=5, le=40)):
 def stock_news(ticker: str, limit: int = Query(12, ge=5, le=30)):
     """Legacy lightweight per-ticker feed."""
     return fetch_stock_news(ticker, limit=limit)
+
+
+@router.get("/summary")
+def summary(period: str = Query("day", pattern="^(day|week|month)$")):
+    """Day / Week / Month rollup from the persistent news archive.
+
+    Coverage grows over time — each call to /api/news/intelligence appends
+    newly seen articles to the archive (deduped by link, pruned to 90 days).
+    """
+    return summarize(period=period)

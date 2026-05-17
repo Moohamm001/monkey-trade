@@ -17,10 +17,15 @@ be slotted in later without breaking the frontend contract.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
+import threading
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote_plus
 
@@ -883,6 +888,80 @@ def fetch_market_news(limit: int = 30) -> List[dict]:
     return deduped[:limit]
 
 
+# ── Persistent archive (powers day/week/month summaries) ─────────────────────
+# Every intelligence pull appends new articles to a single JSON file. We keep a
+# compact subset of fields (no full body) and prune to a rolling 90-day window
+# so the file stays small. Dedupe is by article link.
+
+_ARCHIVE_PATH = Path(__file__).resolve().parent.parent / "data" / "news_archive.json"
+_ARCHIVE_LOCK = threading.Lock()
+_ARCHIVE_RETENTION_DAYS = 90
+_ARCHIVE_FIELDS = (
+    "title", "link", "source", "published",
+    "event_type", "sentiment", "sentiment_score",
+    "tickers", "smart_money", "is_megacap",
+    "confidence", "signal", "recommendation",
+)
+
+
+def _archive_load() -> list[dict]:
+    if not _ARCHIVE_PATH.exists():
+        return []
+    try:
+        with _ARCHIVE_PATH.open("r", encoding="utf-8") as f:
+            return json.load(f) or []
+    except Exception:
+        return []
+
+
+def _archive_save(records: list[dict]) -> None:
+    try:
+        _ARCHIVE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _ARCHIVE_PATH.open("w", encoding="utf-8") as f:
+            json.dump(records, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def _archive_upsert(enriched: list[dict]) -> None:
+    """Merge a fresh pull into the archive, dedupe by link, prune to retention."""
+    with _ARCHIVE_LOCK:
+        existing = _archive_load()
+        by_link: dict[str, dict] = {r["link"]: r for r in existing if r.get("link")}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for a in enriched:
+            link = a.get("link")
+            if not link:
+                continue
+            slim = {k: a.get(k) for k in _ARCHIVE_FIELDS}
+            # Store an `archived_at` timestamp so we can window even when an
+            # article has a missing/garbage `published` field.
+            slim["archived_at"] = now_iso
+            # Lower-tier `signal` payload: keep only what summaries need.
+            sig = slim.get("signal") or {}
+            slim["signal"] = {
+                "opportunity": sig.get("opportunity"),
+                "quality":     sig.get("quality"),
+            }
+            by_link[link] = slim
+
+        # Prune old entries
+        cutoff = datetime.now(timezone.utc) - timedelta(days=_ARCHIVE_RETENTION_DAYS)
+        kept: list[dict] = []
+        for r in by_link.values():
+            ts_str = r.get("published") or r.get("archived_at") or ""
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            except Exception:
+                ts = datetime.now(timezone.utc)
+            if ts >= cutoff:
+                kept.append(r)
+
+        _archive_save(kept)
+
+
 def fetch_intelligence(
     limit: int = 25,
     min_confidence: int = 0,
@@ -899,6 +978,10 @@ def fetch_intelligence(
             continue
         seen.add(key)
         enriched.append(_enrich(a))
+
+    # Persist BEFORE filtering — the archive should reflect everything we saw,
+    # not just what passes the user's current filter.
+    _archive_upsert(enriched)
 
     # filters
     if event_type and event_type != "All":
@@ -1029,4 +1112,280 @@ def fetch_ticker_intelligence(ticker: str, limit: int = 15) -> dict:
         "bearish_count": bearish,
         "tone":          tone,
         "avg_opportunity": avg_opp,
+    }
+
+
+# ── Bot integration helper ───────────────────────────────────────────────────
+
+def get_news_score_for_ticker(ticker: str, direction: str = "long", limit: int = 12) -> dict:
+    """Compress the per-ticker intelligence into a single 0-1 score and a
+    short context dict the bot can store on the trade record.
+
+    Returns:
+        {
+            "available":      bool,
+            "score":          float (0-1),       # 0.5 = neutral / no info
+            "tone":           str,                # bullish/bearish/mixed
+            "article_count":  int,
+            "bullish_count":  int,
+            "bearish_count":  int,
+            "avg_opportunity": int (0-100),
+            "smart_money_buy":  int,              # SM article counts aligned w/ direction
+            "smart_money_sell": int,
+            "smart_money_entities": [str],        # canonical names mentioned
+            "top_event_types":  [(event, count)], # most common event types
+            "headline_top":   str | None,         # title of highest-opp article
+            "reason":         str,                # one-line summary the bot can quote
+        }
+    """
+    try:
+        intel = fetch_ticker_intelligence(ticker, limit=limit)
+    except Exception:
+        return {"available": False, "score": 0.5, "reason": "news fetch failed"}
+
+    arts = intel.get("articles") or []
+    if not arts:
+        return {"available": False, "score": 0.5, "reason": "no news available"}
+
+    tone           = intel.get("tone", "mixed")
+    avg_opp        = intel.get("avg_opportunity", 0)
+    bullish_count  = intel.get("bullish_count", 0)
+    bearish_count  = intel.get("bearish_count", 0)
+
+    # Direction alignment
+    direction = (direction or "long").lower()
+    if direction == "long":
+        if   tone == "bullish": dir_score = 0.85
+        elif tone == "bearish": dir_score = 0.15
+        else:                    dir_score = 0.50
+    else:  # short
+        if   tone == "bearish": dir_score = 0.85
+        elif tone == "bullish": dir_score = 0.15
+        else:                    dir_score = 0.50
+
+    # Smart Money news alignment
+    sm_buys = sm_sells = 0
+    sm_entities: set[str] = set()
+    event_counter: dict[str, int] = {}
+    for a in arts:
+        sm = a.get("smart_money") or {}
+        if sm.get("detected"):
+            d = sm.get("direction")
+            if d == "buy":  sm_buys  += 1
+            if d == "sell": sm_sells += 1
+            for e in sm.get("entities") or []:
+                sm_entities.add(e["name"])
+        et = a.get("event_type", "General")
+        event_counter[et] = event_counter.get(et, 0) + 1
+
+    sm_bonus = 0.0
+    if direction == "long":
+        sm_bonus += 0.05 * sm_buys - 0.04 * sm_sells
+    else:
+        sm_bonus += 0.05 * sm_sells - 0.04 * sm_buys
+    sm_bonus = max(-0.30, min(0.30, sm_bonus))
+
+    opp_score = max(0.0, min(1.0, avg_opp / 100.0))
+
+    # Final blend: 50% direction, 30% opp magnitude, 20% baseline + SM bonus
+    score = (dir_score * 0.50) + (opp_score * 0.30) + 0.20 + sm_bonus
+    score = max(0.0, min(1.0, score))
+
+    top_event_types = sorted(event_counter.items(), key=lambda x: -x[1])[:3]
+    headline_top = arts[0].get("title") if arts else None
+
+    reason_bits = [
+        f"News tone {tone}",
+        f"{bullish_count}↑/{bearish_count}↓",
+        f"avg_opp={avg_opp}",
+    ]
+    if sm_buys or sm_sells:
+        reason_bits.append(f"SM news {sm_buys}B/{sm_sells}S")
+    if sm_entities:
+        reason_bits.append(f"entities: {', '.join(sorted(sm_entities)[:3])}")
+
+    return {
+        "available":        True,
+        "score":            round(score, 4),
+        "tone":             tone,
+        "article_count":    intel.get("count", len(arts)),
+        "bullish_count":    bullish_count,
+        "bearish_count":    bearish_count,
+        "avg_opportunity":  avg_opp,
+        "smart_money_buy":  sm_buys,
+        "smart_money_sell": sm_sells,
+        "smart_money_entities": sorted(sm_entities),
+        "top_event_types":  top_event_types,
+        "headline_top":     headline_top,
+        "reason":           " | ".join(reason_bits),
+    }
+
+
+# ── Day / Week / Month summary aggregator ────────────────────────────────────
+
+_PERIOD_DAYS = {"day": 1, "week": 7, "month": 30}
+
+
+def _parse_iso(s: str) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def summarize(period: str = "day") -> dict:
+    """Aggregate the archive over the requested window and return a rollup.
+
+    Period:
+      "day"   → last 24h
+      "week"  → last 7d
+      "month" → last 30d
+
+    Pulls from the persistent archive (`backend/data/news_archive.json`) which
+    is appended on every `fetch_intelligence` call. Coverage builds over time —
+    a fresh install only has whatever the latest fetch surfaced.
+    """
+    period = period.lower()
+    days = _PERIOD_DAYS.get(period, 1)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
+
+    all_records = _archive_load()
+    in_window: list[dict] = []
+    for r in all_records:
+        ts = _parse_iso(r.get("published")) or _parse_iso(r.get("archived_at"))
+        if ts and ts >= cutoff:
+            in_window.append(r)
+
+    if not in_window:
+        return {
+            "period":         period,
+            "window_days":    days,
+            "window_from":    cutoff.isoformat(),
+            "window_to":      now.isoformat(),
+            "total_articles": 0,
+            "smart_money_count": 0,
+            "market_tone":    "No data",
+            "avg_confidence": 0,
+            "by_sentiment":   {"bullish": 0, "bearish": 0, "neutral": 0},
+            "by_event":       [],
+            "by_day":         [],
+            "top_tickers":    [],
+            "top_entities":   [],
+            "top_signals":    [],
+            "biggest_smart_money_moves": [],
+            "archive_total":  len(all_records),
+        }
+
+    # Sentiment + event histograms
+    by_sentiment = Counter(r.get("sentiment", "neutral") for r in in_window)
+    by_event_cnt = Counter(r.get("event_type", "General") for r in in_window)
+
+    # Per-day breakdown (always ordered oldest → newest for charting)
+    by_day: dict[str, dict] = defaultdict(lambda: {"bull": 0, "bear": 0, "neut": 0, "sm": 0, "total": 0})
+    for r in in_window:
+        ts = _parse_iso(r.get("published")) or _parse_iso(r.get("archived_at")) or now
+        d = ts.strftime("%Y-%m-%d")
+        sent = r.get("sentiment", "neutral")
+        by_day[d]["total"] += 1
+        by_day[d]["bull"]  += int(sent == "bullish")
+        by_day[d]["bear"]  += int(sent == "bearish")
+        by_day[d]["neut"]  += int(sent == "neutral")
+        if (r.get("smart_money") or {}).get("detected"):
+            by_day[d]["sm"] += 1
+
+    # Ticker mentions
+    ticker_cnt: Counter[str] = Counter()
+    for r in in_window:
+        for t in (r.get("tickers") or []):
+            ticker_cnt[t] += 1
+
+    # Entity aggregation (per direction)
+    entity_agg: dict[str, dict] = {}
+    smart_money_records: list[dict] = []
+    for r in in_window:
+        sm = r.get("smart_money") or {}
+        if not sm.get("detected"):
+            continue
+        smart_money_records.append(r)
+        for e in sm.get("entities") or []:
+            name = e["name"]
+            if name not in entity_agg:
+                entity_agg[name] = {"category": e["category"], "count": 0, "buys": 0, "sells": 0}
+            entity_agg[name]["count"] += 1
+            if e.get("direction") == "buy":  entity_agg[name]["buys"]  += 1
+            if e.get("direction") == "sell": entity_agg[name]["sells"] += 1
+
+    top_entities = sorted(
+        [{"name": k, **v} for k, v in entity_agg.items()],
+        key=lambda e: -e["count"],
+    )[:15]
+
+    # Top signals by opportunity (overall)
+    def _opp(r: dict) -> int:
+        return int(((r.get("signal") or {}).get("opportunity")) or 0)
+    top_signals = sorted(in_window, key=_opp, reverse=True)[:8]
+
+    # Biggest smart-money moves
+    biggest_sm = sorted(smart_money_records, key=_opp, reverse=True)[:8]
+
+    avg_conf = int(sum((r.get("confidence") or 0) for r in in_window) / len(in_window))
+
+    tone = (
+        "Risk-On"  if by_sentiment["bullish"] > by_sentiment["bearish"] * 1.3 else
+        "Risk-Off" if by_sentiment["bearish"] > by_sentiment["bullish"] * 1.3 else
+        "Mixed"
+    )
+
+    # Helper: trim a record for the response (drop big nested objects)
+    def _slim(r: dict) -> dict:
+        sm = r.get("smart_money") or {}
+        return {
+            "title":      r.get("title"),
+            "link":       r.get("link"),
+            "source":     r.get("source"),
+            "published":  r.get("published"),
+            "event_type": r.get("event_type"),
+            "sentiment":  r.get("sentiment"),
+            "tickers":    r.get("tickers") or [],
+            "confidence": r.get("confidence"),
+            "opportunity": _opp(r),
+            "recommendation": r.get("recommendation"),
+            "smart_money": {
+                "detected":  sm.get("detected", False),
+                "direction": sm.get("direction"),
+                "entities":  [{"name": e["name"], "category": e["category"]} for e in (sm.get("entities") or [])],
+                "headline":  sm.get("headline"),
+            } if sm.get("detected") else None,
+        }
+
+    return {
+        "period":              period,
+        "window_days":         days,
+        "window_from":         cutoff.isoformat(),
+        "window_to":           now.isoformat(),
+        "total_articles":      len(in_window),
+        "smart_money_count":   len(smart_money_records),
+        "market_tone":         tone,
+        "avg_confidence":      avg_conf,
+        "by_sentiment": {
+            "bullish": by_sentiment.get("bullish", 0),
+            "bearish": by_sentiment.get("bearish", 0),
+            "neutral": by_sentiment.get("neutral", 0),
+        },
+        "by_event": [{"event": k, "count": v} for k, v in by_event_cnt.most_common(12)],
+        "by_day": [
+            {"date": d, **by_day[d]}
+            for d in sorted(by_day.keys())
+        ],
+        "top_tickers":     [{"ticker": t, "mentions": n} for t, n in ticker_cnt.most_common(15)],
+        "top_entities":    top_entities,
+        "top_signals":     [_slim(r) for r in top_signals],
+        "biggest_smart_money_moves": [_slim(r) for r in biggest_sm],
+        "archive_total":   len(all_records),
     }

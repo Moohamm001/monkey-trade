@@ -3,7 +3,8 @@ import {
   ExternalLink, RefreshCw, TrendingUp, TrendingDown, Minus, Search,
   Brain, Newspaper, AlertTriangle, Target, Sparkles,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, Clock,
-  Crown, Landmark, Building2, Briefcase, Star,
+  Crown, Landmark, Building2, Briefcase, Star, CalendarDays,
+  CalendarRange, Calendar,
 } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import HelpBanner from '../components/HelpBanner'
@@ -405,7 +406,14 @@ export default function News() {
   const [smartOnly, setSmartOnly]     = useState(false)
   const [entityFilter, setEntityFilter] = useState(null)   // canonical name or null
   const [expandSpotlight, setExpandSpotlight] = useState(false)
+  const [summaryPeriod, setSummaryPeriod] = useState('day') // 'day' | 'week' | 'month'
+  const [summary, setSummary]         = useState(null)
   const { call, loading }             = useApi()
+
+  const loadSummary = async (p = summaryPeriod) => {
+    const data = await call(`/api/news/summary?period=${p}`)
+    if (data) setSummary(data)
+  }
 
   const loadIntel = async () => {
     const params = new URLSearchParams({ limit: '150', min_confidence: String(minConf) })
@@ -426,9 +434,15 @@ export default function News() {
   useEffect(() => {
     if (tab === 'intelligence' && !intel) loadIntel()
     if (tab === 'feed' && feed.length === 0) loadFeed()
+    if (tab === 'summary' && !summary) loadSummary(summaryPeriod)
     setPage(1)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
+
+  useEffect(() => {
+    if (tab === 'summary') loadSummary(summaryPeriod)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryPeriod])
 
   useEffect(() => {
     if (tab === 'intelligence') loadIntel()
@@ -470,6 +484,7 @@ export default function News() {
           "Use the <b>Intelligence</b> tab — cards are ranked by Opportunity score; <b>gold-bordered</b> ones are Smart Money signals (Trump / Pelosi / Buffett / Burry / Ackman / BlackRock / Musk …).",
           "Each card shows a plain-English <b>Action label</b> (FOLLOW MONEY / STRONG SETUP / WATCHLIST / SKIP), plus Opp (0-100) and Conf (0-100%).",
           "Click <b>Show details</b> for signal-score breakdown, expected price move per horizon, bull/base/bear scenarios, and historical analogs.",
+          "Switch to <b>Summary</b> for a Today / Week / Month rollup — sentiment-by-day, top events, most-active smart money entities, biggest moves.",
           "Use the <b>Ticker Lookup</b> tab to score news for a specific symbol.",
         ]}
         tips={[
@@ -485,6 +500,10 @@ export default function News() {
           className={`btn text-sm font-semibold ${tab === 'intelligence' ? 'btn-primary' : 'btn-ghost'}`}>
           <Brain size={14} /> Intelligence
         </button>
+        <button onClick={() => setTab('summary')}
+          className={`btn text-sm font-semibold ${tab === 'summary' ? 'btn-primary' : 'btn-ghost'}`}>
+          <CalendarDays size={14} /> Summary
+        </button>
         <button onClick={() => setTab('feed')}
           className={`btn text-sm font-semibold ${tab === 'feed' ? 'btn-primary' : 'btn-ghost'}`}>
           <Newspaper size={14} /> Market Feed
@@ -495,7 +514,12 @@ export default function News() {
         </button>
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => tab === 'intelligence' ? loadIntel() : tab === 'feed' ? loadFeed() : loadTicker(ticker)}
+            onClick={() =>
+              tab === 'intelligence' ? loadIntel() :
+              tab === 'feed'         ? loadFeed() :
+              tab === 'summary'      ? loadSummary(summaryPeriod) :
+              loadTicker(ticker)
+            }
             disabled={loading}
             className="btn-ghost text-xs">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -806,6 +830,275 @@ export default function News() {
             page={page} totalPages={totalPages} onPage={setPage}
             pageSize={pageSize} onPageSize={setPageSize} total={sourceList.length}
           />
+        </>
+      )}
+
+      {/* ── SUMMARY TAB (Day / Week / Month) ─────────────────────────── */}
+      {tab === 'summary' && (
+        <>
+          {/* Period switcher */}
+          <div className="card flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-ink uppercase">Period</span>
+            {[
+              { id: 'day',   label: 'Today',      sub: 'last 24h',  Icon: Calendar },
+              { id: 'week',  label: 'This Week',  sub: 'last 7d',   Icon: CalendarRange },
+              { id: 'month', label: 'This Month', sub: 'last 30d',  Icon: CalendarDays },
+            ].map(({ id, label, sub, Icon }) => (
+              <button key={id}
+                onClick={() => setSummaryPeriod(id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-semibold transition ${
+                  summaryPeriod === id
+                    ? 'bg-primary text-white border-primary shadow'
+                    : 'bg-white text-ink border-border hover:bg-surface'
+                }`}>
+                <Icon size={14} />
+                <span>{label}</span>
+                <span className={`text-xs ${summaryPeriod === id ? 'text-white/80' : 'text-sub'}`}>· {sub}</span>
+              </button>
+            ))}
+            {summary && (
+              <span className="ml-auto text-xs text-sub">
+                Archive: <b className="text-ink">{summary.archive_total}</b> articles · last 90d
+              </span>
+            )}
+          </div>
+
+          {loading && !summary && (
+            <div className="text-ink text-sm flex items-center gap-2 p-3">
+              <RefreshCw size={14} className="animate-spin text-primary" /> Building summary…
+            </div>
+          )}
+
+          {summary && summary.total_articles === 0 && (
+            <div className="card text-center py-10">
+              <AlertTriangle size={24} className="inline mb-2 text-amber-600" />
+              <div className="text-ink font-semibold">No archived news in this window.</div>
+              <div className="text-sm text-sub mt-1">
+                The archive builds as you use the <b>Intelligence</b> tab. Open it, wait for the load to finish, then come back.
+              </div>
+            </div>
+          )}
+
+          {summary && summary.total_articles > 0 && (
+            <>
+              {/* KPI strip */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                <div className="card">
+                  <div className="text-xs font-semibold text-sub uppercase tracking-wide">Articles</div>
+                  <div className="text-3xl font-extrabold text-ink mt-0.5">{summary.total_articles}</div>
+                  <div className="text-xs text-sub mt-0.5">in window</div>
+                </div>
+                <div className="card border-amber-300 border-2">
+                  <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide flex items-center gap-1">
+                    <Crown size={11} /> Smart Money
+                  </div>
+                  <div className="text-3xl font-extrabold text-amber-700 mt-0.5">{summary.smart_money_count}</div>
+                  <div className="text-xs text-sub mt-0.5">
+                    {summary.total_articles > 0 ? Math.round(summary.smart_money_count / summary.total_articles * 100) : 0}% of total
+                  </div>
+                </div>
+                <div className="card">
+                  <div className="text-xs font-semibold text-sub uppercase tracking-wide">Market Tone</div>
+                  <div className={`mt-1 inline-block px-2.5 py-1 rounded-full border text-sm font-bold ${toneMeta[summary.market_tone] || 'bg-slate-100 text-slate-700 border-slate-300'}`}>
+                    {summary.market_tone}
+                  </div>
+                </div>
+                <div className="card">
+                  <div className="text-xs font-semibold text-sub uppercase tracking-wide">Sentiment Split</div>
+                  <div className="text-sm font-bold text-ink mt-1 flex flex-wrap gap-1.5">
+                    <span className="text-green-700">▲ {summary.by_sentiment.bullish}</span>
+                    <span className="text-red-700">▼ {summary.by_sentiment.bearish}</span>
+                    <span className="text-slate-700">● {summary.by_sentiment.neutral}</span>
+                  </div>
+                </div>
+                <div className="card">
+                  <div className="text-xs font-semibold text-sub uppercase tracking-wide">Avg Confidence</div>
+                  <div className="text-3xl font-extrabold text-ink mt-0.5">{summary.avg_confidence}%</div>
+                </div>
+              </div>
+
+              {/* By-day sentiment bars */}
+              {summary.by_day.length > 0 && (
+                <div className="card">
+                  <div className="text-xs font-bold text-ink uppercase tracking-wide mb-2">
+                    Daily Activity ({summary.by_day.length} days)
+                  </div>
+                  <div className="space-y-1">
+                    {summary.by_day.map(d => {
+                      const total = d.total || 1
+                      const bullPct = (d.bull / total) * 100
+                      const bearPct = (d.bear / total) * 100
+                      const neutPct = (d.neut / total) * 100
+                      return (
+                        <div key={d.date} className="flex items-center gap-2 text-xs">
+                          <span className="w-20 font-mono text-sub font-semibold">{d.date}</span>
+                          <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden flex">
+                            <div className="bg-green-500 h-full" style={{ width: `${bullPct}%` }} title={`${d.bull} bullish`} />
+                            <div className="bg-slate-400 h-full" style={{ width: `${neutPct}%` }} title={`${d.neut} neutral`} />
+                            <div className="bg-red-500 h-full"   style={{ width: `${bearPct}%` }} title={`${d.bear} bearish`} />
+                          </div>
+                          <span className="w-12 text-right font-mono font-bold text-ink">{d.total}</span>
+                          {d.sm > 0 && (
+                            <span className="text-xs font-extrabold text-amber-700 bg-amber-100 border border-amber-300 rounded px-1.5 py-0.5 inline-flex items-center gap-0.5">
+                              <Crown size={10} /> {d.sm}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Two-column: top events + top tickers */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                <div className="card">
+                  <div className="text-xs font-bold text-ink uppercase tracking-wide mb-2">Top Events</div>
+                  {summary.by_event.length === 0 ? (
+                    <div className="text-sub text-sm">No events.</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {summary.by_event.map(e => {
+                        const max = summary.by_event[0].count
+                        const pct = (e.count / max) * 100
+                        return (
+                          <div key={e.event} className="flex items-center gap-2 text-xs">
+                            <span className="w-32 text-ink font-semibold truncate">{e.event}</span>
+                            <div className="flex-1 h-3 bg-slate-100 rounded overflow-hidden">
+                              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="w-8 text-right font-mono font-bold text-ink">{e.count}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="card">
+                  <div className="text-xs font-bold text-ink uppercase tracking-wide mb-2">Top Tickers Mentioned</div>
+                  {summary.top_tickers.length === 0 ? (
+                    <div className="text-sub text-sm">No tickers extracted in this window.</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {summary.top_tickers.map(t => (
+                        <button key={t.ticker}
+                          onClick={() => { setTab('ticker'); setTicker(t.ticker); loadTicker(t.ticker) }}
+                          className="text-sm font-mono font-bold bg-amber-100 border border-amber-300 text-amber-900 rounded-lg px-2 py-1 hover:bg-amber-200">
+                          ${t.ticker} <span className="text-sub font-normal">×{t.mentions}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Top entities */}
+              {summary.top_entities.length > 0 && (
+                <div className="card border-2 border-amber-300 bg-amber-50/40">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Crown size={16} className="text-amber-600" />
+                    <div className="text-xs font-bold text-ink uppercase tracking-wide">
+                      Most Active Smart Money — {summaryPeriod === 'day' ? 'Today' : summaryPeriod === 'week' ? 'This Week' : 'This Month'}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {summary.top_entities.map(e => {
+                      const cm = smCategoryMeta[e.category] || smCategoryMeta['Billionaire Investor']
+                      const Icon = cm.Icon
+                      return (
+                        <div key={e.name}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 ${cm.bg}`}>
+                          <Icon size={13} className={cm.color} />
+                          <span className="text-sm font-bold text-ink">{e.name}</span>
+                          <span className="text-xs text-sub">×{e.count}</span>
+                          {e.buys > 0 &&  <span className="text-[10px] font-extrabold text-green-700 bg-green-100 px-1 rounded">{e.buys}B</span>}
+                          {e.sells > 0 && <span className="text-[10px] font-extrabold text-red-700   bg-red-100   px-1 rounded">{e.sells}S</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Biggest Smart Money moves */}
+              {summary.biggest_smart_money_moves.length > 0 && (
+                <div className="card">
+                  <div className="text-xs font-bold text-ink uppercase tracking-wide mb-2">
+                    Biggest Smart Money Moves
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {summary.biggest_smart_money_moves.map((m, i) => (
+                      <a key={i} href={m.link} target="_blank" rel="noopener noreferrer"
+                        className="block rounded-lg border-2 border-amber-300 bg-amber-50/50 p-2 hover:shadow-card-hover transition-shadow group">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                          {m.smart_money?.entities?.slice(0, 2).map(e => {
+                            const cm = smCategoryMeta[e.category] || smCategoryMeta['Billionaire Investor']
+                            const Icon = cm.Icon
+                            return (
+                              <span key={e.name} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 border ${cm.bg}`}>
+                                <Icon size={11} className={cm.color} />
+                                <span className="text-xs font-bold text-ink">{e.name}</span>
+                              </span>
+                            )
+                          })}
+                          <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${(smDirectionMeta[m.smart_money?.direction] || smDirectionMeta.neutral).color}`}>
+                            {(smDirectionMeta[m.smart_money?.direction] || smDirectionMeta.neutral).label}
+                          </span>
+                          <span className="ml-auto text-[10px] text-sub">{relTime(m.published)}</span>
+                        </div>
+                        <h4 className="text-xs font-bold text-ink leading-snug line-clamp-2 group-hover:text-primary mb-1">
+                          {m.title}
+                        </h4>
+                        <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                          {m.tickers?.slice(0, 3).map(t => (
+                            <span key={t} className="font-mono font-bold bg-white border border-amber-300 text-amber-900 rounded px-1">${t}</span>
+                          ))}
+                          <span className="ml-auto font-bold text-ink">Opp <b className="text-primary">{m.opportunity}</b></span>
+                          <span className="font-bold text-ink">Conf <b className="text-primary">{m.confidence}%</b></span>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Top overall signals */}
+              {summary.top_signals.length > 0 && (
+                <div className="card">
+                  <div className="text-xs font-bold text-ink uppercase tracking-wide mb-2">
+                    Top Opportunity Signals (any source)
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {summary.top_signals.map((m, i) => {
+                      const stm = sentimentMeta[m.sentiment] || sentimentMeta.neutral
+                      return (
+                        <a key={i} href={m.link} target="_blank" rel="noopener noreferrer"
+                          className="block rounded-lg border border-border bg-white p-2 hover:shadow-card-hover transition-shadow group">
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            <span className="text-xs font-bold text-primary truncate max-w-[120px]">{m.source}</span>
+                            <span className="text-[10px] text-sub">{relTime(m.published)}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold ${stm.color}`}>{stm.label}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-white font-bold">{m.event_type}</span>
+                          </div>
+                          <h4 className="text-xs font-bold text-ink leading-snug line-clamp-2 group-hover:text-primary mb-1">
+                            {m.title}
+                          </h4>
+                          <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                            {m.tickers?.slice(0, 3).map(t => (
+                              <span key={t} className="font-mono font-bold bg-amber-50 border border-amber-300 text-amber-900 rounded px-1">${t}</span>
+                            ))}
+                            <span className="ml-auto font-bold text-ink">Opp <b className="text-primary">{m.opportunity}</b></span>
+                            <span className="font-bold text-ink">Conf <b className="text-primary">{m.confidence}%</b></span>
+                          </div>
+                        </a>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
     </div>
