@@ -346,6 +346,152 @@ def get_scan_log(filename: str):
         raise HTTPException(status_code=404, detail="Scan log not found")
 
 
+# ── Reset endpoints ──────────────────────────────────────────────────────────
+# Each clears a single piece of bot state. Full Reset chains them all in one
+# call so the user can wipe everything without remembering the order.
+
+@router.delete("/activity")
+def clear_activity():
+    """Empty the bot decision log (`bot_activity.json`)."""
+    bot_model.save_activity({"entries": []})
+    return {"ok": True, "cleared": "activity_log"}
+
+
+@router.delete("/scanlogs")
+def clear_scanlogs():
+    """Delete every per-scan JSON file under `data/scan_logs/`."""
+    import os as _os
+    removed = 0
+    for fname in autonomous_bot.list_scan_logs():
+        path = _os.path.join(autonomous_bot.SCAN_LOG_DIR, fname)
+        try:
+            _os.remove(path)
+            removed += 1
+        except Exception:
+            continue
+    bot_model.append_activity({
+        "event": "reset",
+        "note":  f"Cleared {removed} scan log file(s).",
+    })
+    return {"ok": True, "cleared": "scan_logs", "removed": removed}
+
+
+@router.delete("/trades")
+def clear_bot_trades(close_open: bool = Query(True, description="Force-close open bot trades at last known price")):
+    """Remove bot-sourced trades from the forwardtest store. Manual trades are preserved.
+
+    If `close_open=true` (default), any open bot trades are first force-closed
+    at their last known price (so portfolio cash is returned). Otherwise they
+    are deleted outright (cash stays locked — only use if you're also resetting
+    the portfolio in the same flow).
+    """
+    from ..services import portfolio as portfolio_svc
+    removed_open = 0
+    removed_closed = 0
+
+    with storage.transaction(autonomous_bot.STORE, {"trades": []}) as data:
+        kept = []
+        for t in data.get("trades", []):
+            if t.get("source") != "bot":
+                kept.append(t)
+                continue
+            if t.get("status") == "open":
+                if close_open:
+                    try:
+                        price = t.get("current_price") or t.get("entry_price") or 0
+                        portfolio_svc.close_position(
+                            trade_id   = t["id"],
+                            exit_price = price,
+                            outcome    = "win" if (t.get("unrealized_pnl_pct") or 0) > 0 else "loss",
+                        )
+                    except Exception:
+                        pass
+                removed_open += 1
+            else:
+                removed_closed += 1
+        data["trades"] = kept
+
+    bot_model.append_activity({
+        "event": "reset",
+        "note":  f"Cleared {removed_open} open + {removed_closed} closed bot trade(s) "
+                 f"({'force-closed in portfolio' if close_open else 'deleted outright'}).",
+    })
+    return {
+        "ok":             True,
+        "cleared":        "bot_trades",
+        "removed_open":   removed_open,
+        "removed_closed": removed_closed,
+        "force_closed":   close_open,
+    }
+
+
+@router.post("/full-reset")
+def full_reset(reset_portfolio: bool = Query(True, description="Also reset the $10k virtual portfolio")):
+    """Nuclear option — wipe ALL bot state in one call.
+
+    Order matters:
+      1. Force-close + delete bot trades (returns cash to portfolio)
+      2. Optionally reset portfolio to $10k baseline
+      3. Reset learning model to initial Wyckoff priors
+      4. Clear activity log
+      5. Clear scan logs
+
+    Manual forwardtest trades are preserved.
+    """
+    import os as _os
+    from ..services import portfolio as portfolio_svc
+
+    summary: dict = {}
+
+    # 1. Bot trades (close-open so portfolio cash is reclaimed)
+    summary["trades"] = clear_bot_trades(close_open=True)
+
+    # 2. Portfolio reset (inline because the public reset lives in the
+    # portfolio router, not the service module).
+    if reset_portfolio:
+        try:
+            from datetime import date as _date
+            balance = 10000.0
+            portfolio_svc.save_portfolio({
+                "initial_balance": balance,
+                "cash":            balance,
+                "open_positions":  {},
+                "equity_curve":    [{
+                    "date":            str(_date.today()),
+                    "equity":          balance,
+                    "cash":            balance,
+                    "positions_value": 0.0,
+                }],
+                "stats": {
+                    "total_trades":     0, "wins": 0, "losses": 0,
+                    "total_pnl_dollar": 0.0, "total_pnl_pct": 0.0,
+                    "best_trade_pct":   None, "worst_trade_pct": None,
+                },
+                "trade_history": [],
+            })
+            summary["portfolio"] = {"ok": True, "reset_to": balance}
+        except Exception as e:
+            summary["portfolio"] = {"ok": False, "error": str(e)[:160]}
+
+    # 3. Learning model
+    summary["model"] = reset_model()
+
+    # 4. Activity log
+    summary["activity"] = clear_activity()
+
+    # 5. Scan logs (run last so the reset events from steps 1-4 don't end up
+    # in a log that the next scan deletes anyway — but keeping last-clear
+    # event in activity log)
+    summary["scanlogs"] = clear_scanlogs()
+
+    bot_model.append_activity({
+        "event": "reset",
+        "note":  "FULL RESET — bot trades, model, activity, scan logs"
+                 + (" + portfolio" if reset_portfolio else "") + " wiped.",
+    })
+    return {"ok": True, "performed": summary}
+
+
 @router.get("/scanlogs/latest/summary")
 def latest_scan_summary():
     """Quick summary of the most recent scan log."""

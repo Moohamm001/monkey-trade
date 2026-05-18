@@ -580,6 +580,204 @@ def _enrich_with_news(
 
 # ── trade logging ─────────────────────────────────────────────────────────────
 
+# ── Plain-English label mapping ───────────────────────────────────────────────
+
+_STAGE_STORY = {
+    "accumulation": (
+        "🔵 ACCUMULATION", "the quiet base-building phase where institutions buy under cover",
+        "Patient long entry — biggest reward potential, lowest risk if the base holds.",
+    ),
+    "markup": (
+        "🟢 MARKUP", "the strong-momentum phase — institutions have positioned, retail is now chasing",
+        "Ride the trend — trail stops below the 20-day average; add only on pullbacks.",
+    ),
+    "distribution": (
+        "🟡 DISTRIBUTION", "the topping phase where institutions sell into retail FOMO",
+        "Stand aside — no directional edge; range-trade only if you're disciplined.",
+    ),
+    "markdown": (
+        "🔴 MARKDOWN", "the sustained downtrend after institutions exited",
+        "Short candidate only — every bounce historically gets sold.",
+    ),
+}
+
+_SIGNAL_HUMAN = {
+    "RSI oversold":       "RSI is in oversold territory (typically a reversal setup)",
+    "RSI overbought":     "RSI is overbought — momentum is strong but the move may be stretched",
+    "MACD cross bullish": "MACD just crossed positive — short-term momentum turned up",
+    "MACD cross bearish": "MACD just crossed negative — short-term momentum turned down",
+    "Volume surge":       "Volume is well above its 20-day average — large players are active",
+    "SMA alignment":      "All major moving averages (20/50/200) are properly stacked — long-term trend intact",
+    "Price above SMA50":  "Price is holding above the 50-day moving average (key trend support)",
+    "BB squeeze":         "Bollinger Bands are tight — a volatility expansion is coming",
+    "Wyckoff spring":     "Wyckoff spring detected — a fake breakdown that reversed (classic accumulation tell)",
+    "Stoch crossover":    "Stochastic just crossed bullishly — momentum confirmation",
+    "OBV trend":          "On-Balance Volume is steadily rising — stealth accumulation in progress",
+    "52W breakout":       "Stock broke its 52-week high — new highs attract momentum buyers",
+    "60-Day Price Trend": "60-day uptrend is firmly established (only institutional buying produces this)",
+}
+
+def _human_signal(s: str) -> str:
+    """Translate a technical signal label into one plain-English sentence."""
+    return _SIGNAL_HUMAN.get(s, s)
+
+def _sms_band(sms: Optional[float]) -> tuple[str, str]:
+    """Return (label, emoji) for a Smart Money Score band."""
+    if sms is None:               return "no smart money data", ""
+    if sms >= 80:                  return "EXTREMELY bullish institutional alignment", "🟢🟢"
+    if sms >= 65:                  return "bullish institutional alignment", "🟢"
+    if sms >= 45:                  return "neutral institutional positioning", "⚪"
+    if sms >= 30:                  return "bearish institutional positioning", "🔴"
+    return                              "EXTREMELY bearish institutional alignment", "🔴🔴"
+
+def _news_story(news_ctx: Optional[dict], direction: str) -> Optional[str]:
+    """Compose a one-paragraph human news summary, or None if no news."""
+    if not news_ctx or not news_ctx.get("available"):
+        return None
+    tone   = news_ctx["tone"]
+    bull   = news_ctx["bullish_count"]
+    bear   = news_ctx["bearish_count"]
+    total  = news_ctx["article_count"]
+    avg_op = news_ctx["avg_opportunity"]
+    sm_b   = news_ctx["smart_money_buy"]
+    sm_s   = news_ctx["smart_money_sell"]
+    ents   = news_ctx["smart_money_entities"]
+    top_ev = news_ctx.get("top_event_types") or []
+    headline = news_ctx.get("headline_top")
+
+    align = (
+        (direction == "long"  and tone == "bullish") or
+        (direction == "short" and tone == "bearish")
+    )
+    misalign = (
+        (direction == "long"  and tone == "bearish") or
+        (direction == "short" and tone == "bullish")
+    )
+
+    parts = []
+    # Headline counts reflect the actual tone of the period (not our trade dir).
+    dominant_count = bull if tone == "bullish" else bear if tone == "bearish" else max(bull, bear)
+    # Tone summary
+    if align:
+        parts.append(
+            f"📰 News is in our favor — {dominant_count} of {total} recent headlines lean {tone} "
+            f"(avg opportunity score {avg_op}/100)."
+        )
+    elif misalign:
+        parts.append(
+            f"⚠️ News is leaning AGAINST us ({tone}) — {dominant_count} of {total} recent headlines push the other direction. "
+            "Tighten the stop."
+        )
+    else:
+        parts.append(
+            f"📰 News tone is mixed ({bull}↑ / {bear}↓ of {total}) — no strong directional bias from headlines."
+        )
+
+    # Smart money entity callout
+    if ents:
+        entity_str = " / ".join(ents[:3])
+        if direction == "long" and sm_b > 0:
+            parts.append(f"🎯 Smart-money entities mentioned in a BUY context: {entity_str}. These names draw reflexive retail follow-through.")
+        elif direction == "short" and sm_s > 0:
+            parts.append(f"🎯 Smart-money entities mentioned in a SELL/SHORT context: {entity_str}. Historically high-impact.")
+        elif (direction == "long" and sm_s > 0) or (direction == "short" and sm_b > 0):
+            parts.append(f"⚠️ Smart-money entities ({entity_str}) appearing on the OPPOSITE side of our trade — watch closely.")
+        else:
+            parts.append(f"📌 Smart-money entities recently mentioned: {entity_str} (direction unclear).")
+
+    # Dominant event types
+    if top_ev:
+        ev_str = ", ".join(f"{e}" for e, _ in top_ev[:2])
+        parts.append(f"Dominant news catalysts: {ev_str}.")
+
+    if headline:
+        parts.append(f'Latest top headline: "{headline[:140]}".')
+
+    return " ".join(parts)
+
+
+def _human_reasoning(
+    ticker: str, stage: str, score: float, breakdown: dict,
+    signals: list[str], confidence: float, cycle: dict,
+    news_ctx: Optional[dict] = None, direction: str = "long",
+    entry: Optional[float] = None, stop: Optional[float] = None,
+    target: Optional[float] = None,
+) -> str:
+    """Tell the trade as a story a human can read in 10 seconds.
+
+    Structure:
+      1. What stage is this stock in + what that means
+      2. Why now — Wyckoff signals translated to English
+      3. Institutional confirmation (Smart Money Score) — if available
+      4. News tailwind / headwind — if available
+      5. Bot's rating + the entry/stop/target plan
+    """
+    paragraphs: list[str] = []
+
+    # ── 1. Stage + context ──────────────────────────────────────────────────
+    badge, desc, action = _STAGE_STORY.get(
+        stage, (stage.upper(), "current Wyckoff phase", "")
+    )
+    conf_pct = int(round(confidence * 100))
+    paragraphs.append(
+        f"**{ticker}** is in **{badge}** — {desc}. "
+        f"Bot is {conf_pct}% confident on this stage classification."
+    )
+
+    # ── 2. Why now (Wyckoff signals) ────────────────────────────────────────
+    if signals:
+        human_sigs = [_human_signal(s) for s in signals[:4]]
+        if len(human_sigs) == 1:
+            paragraphs.append(f"**Why now:** {human_sigs[0]}.")
+        else:
+            bullets = "; ".join(human_sigs[:-1]) + f"; and {human_sigs[-1]}"
+            paragraphs.append(f"**Why now:** {bullets}.")
+
+    # ── 3. Institutional confirmation ───────────────────────────────────────
+    sms_raw = breakdown.get("smart_money_raw")
+    if sms_raw is not None:
+        sms_label, emoji = _sms_band(sms_raw)
+        paragraphs.append(
+            f"**Smart Money:** {emoji} {sms_label} "
+            f"({sms_raw:.0f}/100 from insiders, 13D/G, dark pool, options flow, COT, and congressional trades)."
+        )
+
+    # ── 4. News tailwind/headwind ───────────────────────────────────────────
+    news_para = _news_story(news_ctx, direction)
+    if news_para:
+        paragraphs.append(news_para)
+
+    # ── 5. Bot rating + plan ────────────────────────────────────────────────
+    if score >= 0.75:    rating = "🟢 **STRONG SETUP** — multiple high-conviction signals aligned"
+    elif score >= 0.60:  rating = "🔵 **TRADEABLE** — solid setup, normal sizing"
+    elif score >= 0.52:  rating = "🟡 **WATCHLIST-GRADE** — minimum-conviction entry, half-size"
+    else:                rating = "⚪ borderline"
+
+    tier_str = breakdown.get("tier", "wyckoff")
+    layers = (
+        "Wyckoff + Smart Money + News (all 3 institutional layers aligned)" if tier_str == "wyckoff+sms+news" else
+        "Wyckoff + Smart Money"  if tier_str == "wyckoff+sms" else
+        "Wyckoff + News"         if tier_str == "wyckoff+news" else
+        "Wyckoff only"
+    )
+    plan_bits = [f"Combined score **{score:.2f}** vs threshold {breakdown.get('threshold', 0.52):.2f} — {layers}."]
+    if entry and stop and target:
+        risk   = entry - stop  if direction == "long" else stop - entry
+        reward = target - entry if direction == "long" else entry - target
+        rr = (reward / risk) if risk > 0 else None
+        plan_bits.append(
+            f"**Plan:** {direction.upper()} at ~${entry:.2f}, stop ${stop:.2f}, target ${target:.2f}"
+            + (f" (R/R 1:{rr:.1f})." if rr else ".")
+        )
+    paragraphs.append(f"**Bot rating:** {rating}. " + " ".join(plan_bits))
+
+    # ── 6. Action context from cycle detector ───────────────────────────────
+    if action:
+        paragraphs.append(f"*{action}*")
+
+    return "\n\n".join(paragraphs)
+
+
 def _build_reasoning(ticker, stage, score, breakdown, signals, confidence, cycle, news_ctx=None) -> str:
     ind  = cycle.get("indicators", {})
     rsi  = ind.get("rsi")
@@ -653,7 +851,13 @@ def log_trades_autonomously(candidates: list[dict]) -> list[dict]:
             continue
 
         news_ctx = c.get("news_context")
-        reasoning = _build_reasoning(
+        human_notes = _human_reasoning(
+            ticker, stage, score, c["breakdown"],
+            c["signals"], c["confidence"], cycle,
+            news_ctx=news_ctx, direction=direction,
+            entry=entry, stop=stop, target=target,
+        )
+        technical_notes = _build_reasoning(
             ticker, stage, score, c["breakdown"],
             c["signals"], c["confidence"], cycle, news_ctx=news_ctx,
         )
@@ -671,7 +875,8 @@ def log_trades_autonomously(candidates: list[dict]) -> list[dict]:
             "confidence":            round(c["confidence"], 4),
             "signals":               c["signals"],
             "technique":             f"Bot | score={score:.3f}",
-            "notes":                 reasoning,
+            "notes":                 human_notes,         # plain English (shown in UI)
+            "technical_notes":       technical_notes,     # dense audit version
             "entry_date":            str(date.today()),
             "status":                "open",
             "source":                "bot",

@@ -3,7 +3,7 @@ import {
   Play, RefreshCw, RotateCcw, Brain, Activity, Zap,
   TrendingUp, TrendingDown, CheckCircle, XCircle,
   ChevronDown, ChevronUp, AlertTriangle, BookOpen, Bot,
-  FileText, Globe, Layers
+  FileText, Globe, Layers, Trash2, Eraser, AlertOctagon, Shield,
 } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import HelpBanner from '../components/HelpBanner'
@@ -268,11 +268,38 @@ export default function BotControl() {
     }
   }
 
-  const resetModel = async () => {
-    await call('/api/bot/model/reset', { method: 'POST' })
-    setShowResetConfirm(false)
-    await loadData()
+  // ── Reset actions (granular + full) ───────────────────────────────────────
+  const [resetBusy, setResetBusy] = useState('')   // which button is busy
+  const [showDanger, setShowDanger] = useState(false)
+
+  const doReset = async (kind, fn, confirmMsg) => {
+    if (confirmMsg && !window.confirm(confirmMsg)) return
+    setResetBusy(kind)
+    try { await fn() }
+    finally { setResetBusy(''); await loadData() }
   }
+
+  const resetModel       = () => doReset('model',
+    () => call('/api/bot/model/reset',  { method: 'POST' }),
+    'Reset the LEARNING MODEL back to initial Wyckoff priors?\n\nAll learned stage win-rates, signal weights, and news event weights will be wiped. Trades and portfolio are kept.')
+  const clearActivity    = () => doReset('activity',
+    () => call('/api/bot/activity',     { method: 'DELETE' }),
+    'Clear the BOT ACTIVITY LOG?\n\n(decision history only — nothing else is touched)')
+  const clearScanLogs    = () => doReset('scanlogs',
+    () => call('/api/bot/scanlogs',     { method: 'DELETE' }),
+    'Delete ALL saved scan log files?\n\nYou will lose the per-ticker decision breakdowns from past scans.')
+  const clearBotTrades   = () => doReset('trades',
+    () => call('/api/bot/trades?close_open=true', { method: 'DELETE' }),
+    'Remove every BOT-OPENED trade?\n\nOpen positions will be force-closed at last known price (cash is returned to portfolio). Manual forwardtest trades are kept.')
+  const fullReset        = () => doReset('full',
+    () => call('/api/bot/full-reset?reset_portfolio=true', { method: 'POST' }),
+    '⚠️ FULL RESET — this wipes EVERYTHING:\n\n' +
+    '• All bot trades (open + closed)\n' +
+    '• Virtual portfolio → $10,000\n' +
+    '• Learning model → initial Wyckoff priors\n' +
+    '• Activity log\n' +
+    '• All scan logs\n\n' +
+    'Manual forwardtest trades are preserved.\n\nProceed?')
 
   const TABS = [
     { id: 'model',    label: 'Model Brain',    icon: <Brain size={13} /> },
@@ -691,6 +718,111 @@ export default function BotControl() {
           </div>
         </div>
       )}
+
+      {/* ── Danger Zone — Clear / Reset ─────────────────────────────────── */}
+      <div className="bg-white border-2 border-red-200 rounded-xl shadow-sm overflow-hidden">
+        <button
+          onClick={() => setShowDanger(v => !v)}
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-red-50/50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <AlertOctagon size={16} className="text-red-600" />
+            <span className="font-bold text-red-700 text-sm">Danger Zone — Clear / Reset Bot</span>
+            <span className="text-xs text-sub font-normal">Wipe learned state, trades, logs, or everything</span>
+          </div>
+          {showDanger
+            ? <ChevronUp size={14} className="text-red-600" />
+            : <ChevronDown size={14} className="text-red-600" />}
+        </button>
+
+        {showDanger && (
+          <div className="border-t border-red-200 p-4 space-y-4">
+            {/* Granular */}
+            <div>
+              <div className="text-xs font-bold text-sub uppercase tracking-wide mb-2">Granular — clear one piece of state</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                <button
+                  onClick={resetModel}
+                  disabled={!!resetBusy}
+                  className="text-left bg-white border border-amber-300 hover:bg-amber-50 rounded-lg p-3 transition disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-1.5 text-amber-700 font-bold text-sm">
+                    {resetBusy === 'model'
+                      ? <RefreshCw size={13} className="animate-spin" />
+                      : <Brain size={13} />}
+                    Reset Learning Model
+                  </div>
+                  <div className="text-xs text-sub mt-0.5">Stage priors + signal weights + news event weights → defaults</div>
+                </button>
+
+                <button
+                  onClick={clearActivity}
+                  disabled={!!resetBusy}
+                  className="text-left bg-white border border-amber-300 hover:bg-amber-50 rounded-lg p-3 transition disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-1.5 text-amber-700 font-bold text-sm">
+                    {resetBusy === 'activity'
+                      ? <RefreshCw size={13} className="animate-spin" />
+                      : <Eraser size={13} />}
+                    Clear Activity Log
+                  </div>
+                  <div className="text-xs text-sub mt-0.5">Empty bot decision history (most recent 200 entries)</div>
+                </button>
+
+                <button
+                  onClick={clearScanLogs}
+                  disabled={!!resetBusy}
+                  className="text-left bg-white border border-amber-300 hover:bg-amber-50 rounded-lg p-3 transition disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-1.5 text-amber-700 font-bold text-sm">
+                    {resetBusy === 'scanlogs'
+                      ? <RefreshCw size={13} className="animate-spin" />
+                      : <FileText size={13} />}
+                    Clear Scan Logs
+                  </div>
+                  <div className="text-xs text-sub mt-0.5">Delete every per-scan JSON detail file</div>
+                </button>
+
+                <button
+                  onClick={clearBotTrades}
+                  disabled={!!resetBusy}
+                  className="text-left bg-white border border-amber-300 hover:bg-amber-50 rounded-lg p-3 transition disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-1.5 text-amber-700 font-bold text-sm">
+                    {resetBusy === 'trades'
+                      ? <RefreshCw size={13} className="animate-spin" />
+                      : <Trash2 size={13} />}
+                    Clear Bot Trades
+                  </div>
+                  <div className="text-xs text-sub mt-0.5">Force-close + delete bot trades (returns cash). Manual trades kept.</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Full reset */}
+            <div>
+              <div className="text-xs font-bold text-sub uppercase tracking-wide mb-2">Nuclear — wipe everything at once</div>
+              <button
+                onClick={fullReset}
+                disabled={!!resetBusy}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50"
+              >
+                {resetBusy === 'full'
+                  ? <RefreshCw size={15} className="animate-spin" />
+                  : <AlertOctagon size={15} />}
+                Full Reset — bot trades + portfolio + model + activity + scan logs
+              </button>
+              <div className="flex items-start gap-1.5 text-xs text-sub mt-2">
+                <Shield size={11} className="mt-0.5 text-sub flex-shrink-0" />
+                <span>
+                  Manual <b>Forward Test</b> trades are <b>preserved</b> by every reset above.
+                  Only bot-sourced (<code>source: "bot"</code>) trades are touched.
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

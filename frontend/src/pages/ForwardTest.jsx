@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Plus, X, CheckCircle, XCircle, Clock, TrendingUp, TrendingDown,
   BarChart2, BookOpen, RefreshCw, ChevronDown, ChevronUp,
-  Target, Shield, Zap, Award, AlertTriangle
+  Target, Shield, Zap, Award, AlertTriangle, Bot,
 } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import HelpBanner from '../components/HelpBanner'
@@ -62,6 +62,63 @@ function SmartMoneyBadge({ score, compact = false }) {
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
+
+// Lightweight markdown renderer: converts **bold** + *italic* in a paragraph
+// to <strong>/<em>. Splits the notes string on blank lines.
+function MdInline({ text }) {
+  const parts = []
+  let i = 0
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g
+  let m, last = 0, key = 0
+  while ((m = regex.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    const tok = m[0]
+    if (tok.startsWith('**'))      parts.push(<strong key={key++} className="text-ink font-bold">{tok.slice(2, -2)}</strong>)
+    else if (tok.startsWith('`'))  parts.push(<code key={key++} className="text-xs bg-surface px-1 rounded font-mono">{tok.slice(1, -1)}</code>)
+    else                           parts.push(<em key={key++} className="text-sub italic">{tok.slice(1, -1)}</em>)
+    last = m.index + tok.length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return <>{parts}</>
+}
+
+function BotReasoning({ notes, technical }) {
+  const [showTech, setShowTech] = useState(false)
+  if (!notes) return null
+  const paragraphs = notes.split(/\n\n+/).map(p => p.trim()).filter(Boolean)
+  return (
+    <div className="bg-primary-light/30 border border-primary/20 rounded-lg p-3 space-y-2">
+      <div className="flex items-center gap-1.5 text-xs font-bold text-primary uppercase tracking-wide">
+        <Bot size={12} /> Why the bot chose this
+      </div>
+      <div className="space-y-2 text-sm text-ink leading-relaxed">
+        {paragraphs.map((p, i) => (
+          <p key={i} className={p.startsWith('*') && !p.startsWith('**')
+            ? 'text-xs text-sub italic'
+            : ''}>
+            <MdInline text={p} />
+          </p>
+        ))}
+      </div>
+      {technical && (
+        <>
+          <button
+            onClick={() => setShowTech(v => !v)}
+            className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+          >
+            {showTech ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            {showTech ? 'Hide technical breakdown' : 'Show technical breakdown'}
+          </button>
+          {showTech && (
+            <div className="text-xs text-sub bg-white/60 border border-border rounded p-2 font-mono leading-relaxed whitespace-pre-wrap">
+              {technical}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
 
 function PnlBar({ entry, current, stop, target, direction = 'long' }) {
   if (!entry || !current) return null
@@ -223,10 +280,8 @@ function TradeCard({ trade, onClose, onLesson, onDelete }) {
             </div>
           )}
 
-          {/* Notes */}
-          {trade.notes && (
-            <p className="text-xs text-sub italic leading-relaxed">{trade.notes}</p>
-          )}
+          {/* Notes — bot's plain-English "why" + optional technical breakdown */}
+          {trade.notes && <BotReasoning notes={trade.notes} technical={trade.technical_notes} />}
 
           {/* Lesson */}
           {(trade.lesson || !isOpen) && !lessonMode && (
